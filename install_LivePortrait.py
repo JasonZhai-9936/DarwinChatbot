@@ -110,7 +110,7 @@ def install_other_requirements():
 
     run([
         "conda", "run", "-n", CONDA_ENV,
-        "pip", "install", "opencv-python", "tyro", "onnx", "onnxruntime", "sympy", "pykalman"
+        "pip", "install", "opencv-python", "tyro", "onnx", "onnxruntime", "onnxruntime-gpu","sympy", "pykalman", "typing_extensions", "colorama", "torch", "pillow"
     ])
 
     run([
