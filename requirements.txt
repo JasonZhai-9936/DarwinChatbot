@@ -1,0 +1,2 @@
+#these are installs for the base py shell, not any of the venvs
+flask
