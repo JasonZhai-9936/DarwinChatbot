@@ -8,5 +8,4 @@ git commit -m "batch commit"
 echo Pushing to remote...
 git push
 
-echo Done!
-pause
+echo Finished
