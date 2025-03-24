@@ -1,11 +1,11 @@
 # DarwinChatbot
 
 Requirements
-- Windows/Linux only  
+- Windows/Linux   
 - NVIDIA GPU  
   Check your CUDA version:  
   ```bash
-  nvcc -V  # example versions: 11.1, 11.8, 12.1, etc.
+  nvcc -V  #To avoid issues, v12.4 is ideal, but older and newer versions shoudl also work
   ```
 
 Installation Guide
@@ -17,7 +17,7 @@ Installation Guide
 git clone https://github.com/JasonZhai-9936/DarwinChatbot.git
 cd DarwinChatbot
 
-# 3. Run install_requirements.py to install all models (~30GB)
+# 3. Run install_requirements.py to install all models 
 python3 install_requirements.py
 
 # 4. Install remaining dependencies
