@@ -1,4 +1,5 @@
 #main test func that currently generates idle video of Darwin
+#2nd version for testing
 import subprocess
 import os
 import sys

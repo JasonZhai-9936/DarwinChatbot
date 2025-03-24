@@ -42,4 +42,16 @@ python3 app.y
 
 
 
+Quickstart 
+```bash
+# 1. Start env if not already open
+conda activate LivePortrait
+
+# 2. Run app.py
+python app.py
+
+
+
+```
+
 
