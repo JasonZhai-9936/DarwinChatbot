@@ -129,14 +129,13 @@ for i in range(num_iterations):
     run(ffmpeg_cmd)
     print(f"[INFO] Converted to TS format: {stream_chunk}")
 
-    # Append to playlist with accurate EXTINF
+       # Append to playlist with accurate EXTINF (no ENDLIST for live-style playback)
     duration = get_duration(stream_chunk)
     with open(M3U8_PATH, "r+") as f:
         lines = f.readlines()
-        if lines and lines[-1].strip() == "#EXT-X-ENDLIST":
-            lines = lines[:-1]
+        # remove any existing ENDLIST
+        lines = [line for line in lines if line.strip() != "#EXT-X-ENDLIST"]
         lines.append(f"#EXTINF:{duration},\nchunk{i+1}.ts\n")
-        lines.append("#EXT-X-ENDLIST\n")
         f.seek(0)
         f.writelines(lines)
         f.truncate()
