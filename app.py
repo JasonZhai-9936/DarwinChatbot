@@ -1,54 +1,78 @@
-from flask import Flask, render_template, request, redirect, url_for, send_file
+# Updated app.py to support progressive video streaming
+from flask import Flask, render_template, request, redirect, url_for, send_file, Response, send_from_directory
+
 import subprocess
 import os
+import threading
+import time
 
 app = Flask(__name__)
-VIDEO_PATH = os.path.join("LivePortrait", "outputs", "finaloutput.mp4")
 
-#temp change
+# Paths
+STREAM_DIR = os.path.join("static", "stream")
+VIDEO_PATH = os.path.join("LivePortrait", "outputs", "finaloutput.mp4")
+M3U8_PATH = os.path.join(STREAM_DIR, "playlist.m3u8")
+
+# Temp env fix for subprocess
 env = os.environ.copy()
 env["LIVEPORTRAIT_SKIP_RELAUNCH"] = "1"
 
+# Ensure stream dir exists
+os.makedirs(STREAM_DIR, exist_ok=True)
+
+# Background generation thread
+def run_video_generation():
+    subprocess.run(["python", "LivePortraitMainStream.py"], env=env)
+
+def generate_m3u8():
+    """Polls the stream directory and updates the .m3u8 playlist dynamically."""
+    chunk_index = 1
+    with open(M3U8_PATH, "w") as f:
+        f.write("#EXTM3U\n")
+        f.write("#EXT-X-VERSION:3\n")
+        f.write("#EXT-X-TARGETDURATION:5\n")
+        f.write("#EXT-X-MEDIA-SEQUENCE:0\n")
+
+    while True:
+        chunk_path = os.path.join(STREAM_DIR, f"chunk{chunk_index}.mp4")
+        if os.path.exists(chunk_path):
+            with open(M3U8_PATH, "a") as f:
+                f.write(f"#EXTINF:5.0,\nchunk{chunk_index}.ts\n")
+            chunk_index += 1
+        else:
+            time.sleep(1)
+        # End stream if finaloutput is done
+        if os.path.exists(VIDEO_PATH):
+            break
 
 @app.route("/", methods=["GET", "POST"])
 def index():
-    message = ""
     if request.method == "POST":
         user_input = request.form.get("user_input")
         print(f"[USER INPUT] {user_input}")
-
-        # Check if button pressed is meant to generate video
         action = request.form.get("action")
+
         if action == "generate":
-            print("Running LivePortraitMain.py via subprocess...", flush=True)
-            try:
-                subprocess.run(
-                    ["python", "LivePortraitMain.py"],
-                    check=True,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.STDOUT,
-                    text=True,
-                    env=env
-                )
-                print("Video generation completed.", flush=True)
-            except subprocess.CalledProcessError as e:
-                print(" Error while running LivePortraitMain.py:", flush=True)
-                print(e.output, flush=True)
-            return redirect(url_for("video"))
+            print("[INFO] Launching generation in background threads")
+            threading.Thread(target=run_video_generation).start()
+            threading.Thread(target=generate_m3u8).start()
+            return redirect(url_for("stream"))
 
-        message = "Input received."
-    return render_template("index.html", message=message)
+    return render_template("index.html")
 
+@app.route("/stream")
+def stream():
+    return render_template("video_stream.html")
 
-@app.route("/video")
-def video():
-    if os.path.isfile(VIDEO_PATH):
-        return render_template("video.html", video_url=url_for("serve_video"))
-    return "No finaloutput.mp4 found."
+@app.route("/static/stream/<filename>")
+def stream_chunks(filename):
+    return send_from_directory(STREAM_DIR, filename)
 
 @app.route("/LivePortrait/outputs/finaloutput.mp4")
 def serve_video():
     return send_file(VIDEO_PATH, mimetype="video/mp4")
+
+
 
 if __name__ == "__main__":
     port = 5000
