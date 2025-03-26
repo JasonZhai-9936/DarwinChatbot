@@ -1,0 +1,3 @@
+file 'temp_starter_chunk1.ts'
+file 'temp_starter_chunk2.ts'
+file 'temp_starter_chunk3.ts'

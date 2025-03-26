@@ -3,7 +3,7 @@
 Make sure you have `ffmpeg` and `ffprobe` installed on your system. If you don't have them installed, follow the instructions below.
 
 > [!Note]
-> The installation is copied from [SoVITS](https://github.com/RVC-Boss/GPT-SoVITS) 🤗
+> The installation is copied from [SoVITS](https://github.com/RVC-Boss/GPT-SoVITS) 
 
 ### Conda Users
 
@@ -21,9 +21,6 @@ conda install -c conda-forge 'ffmpeg<7'
 
 ### Windows Users
 
-Download and place [ffmpeg.exe](https://huggingface.co/lj1995/VoiceConversionWebUI/blob/main/ffmpeg.exe) and [ffprobe.exe](https://huggingface.co/lj1995/VoiceConversionWebUI/blob/main/ffprobe.exe) in the GPT-SoVITS root.
+Download the 'full' version and place [ffmpeg.exe](https://www.gyan.dev/ffmpeg/builds/)  in /tools.
 
-### MacOS Users
-```bash
-brew install ffmpeg
-```
+
