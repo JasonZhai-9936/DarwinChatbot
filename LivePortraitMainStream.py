@@ -9,9 +9,7 @@ import json
 # ==== CONFIG ====
 APPLY_SLOWDOWN = True
 TARGET_SPEED_PERCENT = 70
-STARTER_CHUNK_COUNT = 5
-
-# =================
+STARTER_CHUNK_COUNT = 3
 
 CONDA_ENV = "LivePortrait"
 REPO_DIR = "LivePortrait"
@@ -26,7 +24,6 @@ STREAM_DIR = os.path.join("outputs", "stream")
 M3U8_PATH = os.path.join(STREAM_DIR, "playlist.m3u8")
 STREAM_LOG = os.path.join(STREAM_DIR, "stream_log.txt")
 STARTER_CHUNK_DIR = os.path.join("outputs", "generate_starter_chunks")
-
 
 IS_WIN = sys.platform.startswith("win")
 FFMPEG = os.path.join("tools", "ffmpeg", "bin", "ffmpeg.exe" if IS_WIN else "ffmpeg")
@@ -168,12 +165,18 @@ for i in range(num_iterations):
 
     inserted_starters = random.sample(starter_chunks, STARTER_CHUNK_COUNT)
     with open(M3U8_PATH, "a") as f:
-        for starter in inserted_starters:
-            f.write(f"#EXTINF:5.0,\n{starter}\n")
+        for starter_path in inserted_starters:
+            starter_filename = os.path.basename(starter_path)
+            dest_path = os.path.join(STREAM_DIR, starter_filename)
+            if not os.path.exists(dest_path):
+                shutil.copyfile(starter_path, dest_path)
+            f.write(f"#EXTINF:5.0,\n{starter_filename}\n")
+
     with open(STREAM_LOG, "a") as f:
-        for starter in inserted_starters:
-            f.write(f"[STARTER] {starter}\n")
-    print(f"[INFO] Inserted starter chunks: {inserted_starters}")
+        for starter_path in inserted_starters:
+            f.write(f"[STARTER] {os.path.basename(starter_path)}\n")
+
+    print(f"[INFO] Inserted starter chunks: {[os.path.basename(p) for p in inserted_starters]}")
 
     if len(used_priority_animations) < len(priority_animations):
         available_priority = list(set(priority_animations) - used_priority_animations)
@@ -196,10 +199,6 @@ for i in range(num_iterations):
         "--animation_region", "all"
     ])
 
-    if not os.path.isdir(temp_output_dir):
-        print(f"[ERROR] Expected output directory {temp_output_dir} does not exist")
-        sys.exit(1)
-
     output_video = get_latest_output(temp_output_dir)
     chunk_name = os.path.join(OUTPUT_DIR, f"chunk{i+1}.mp4")
     if os.path.exists(chunk_name):
@@ -213,8 +212,7 @@ for i in range(num_iterations):
         os.rename(slowed_chunk, chunk_name)
 
     stream_chunk = os.path.join(STREAM_DIR, f"chunk{i+1}.ts")
-    ffmpeg_cmd = f"{FFMPEG} -y -i {chunk_name} -c:v copy -c:a copy -bsf:v h264_mp4toannexb -f mpegts {stream_chunk}"
-    run(ffmpeg_cmd)
+    run(f"{FFMPEG} -y -i {chunk_name} -c:v copy -c:a copy -bsf:v h264_mp4toannexb -f mpegts {stream_chunk}")
 
     duration = get_duration(stream_chunk)
 
