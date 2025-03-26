@@ -9,7 +9,7 @@ import time
 app = Flask(__name__)
 
 # Paths
-STREAM_DIR = os.path.join("static", "stream")
+STREAM_DIR = os.path.join("outputs", "stream")
 VIDEO_PATH = os.path.join("LivePortrait", "outputs", "finaloutput.mp4")
 M3U8_PATH = os.path.join(STREAM_DIR, "playlist.m3u8")
 
@@ -64,7 +64,7 @@ def index():
 def stream():
     return render_template("video_stream.html")
 
-@app.route("/static/stream/<filename>")
+@app.route("/outputs/stream/<filename>")
 def stream_chunks(filename):
     return send_from_directory(STREAM_DIR, filename)
 
@@ -72,6 +72,9 @@ def stream_chunks(filename):
 def serve_video():
     return send_file(VIDEO_PATH, mimetype="video/mp4")
 
+@app.route("/outputs/stream/playlist.m3u8")
+def stream_playlist():
+    return send_file(M3U8_PATH, mimetype="application/vnd.apple.mpegurl")
 
 
 if __name__ == "__main__":

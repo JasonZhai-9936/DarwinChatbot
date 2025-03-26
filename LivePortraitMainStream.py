@@ -1,4 +1,3 @@
-# Modified LivePortraitMain.py to support streaming with .ts chunks (HLS compatible + dynamic EXTINF)
 import subprocess
 import os
 import sys
@@ -6,6 +5,11 @@ import random
 import glob
 import shutil
 import json
+
+# ==== CONFIG ====
+APPLY_SLOWDOWN = True  # Toggle slowdown
+TARGET_SPEED_PERCENT = 50  # Playback speed percentage (e.g. 80 = 80%)
+# =================
 
 CONDA_ENV = "LivePortrait"
 REPO_DIR = "LivePortrait"
@@ -16,8 +20,12 @@ INPUT_IMAGE = os.path.join(REPO_DIR, "assets", "prompts", "Darwin4.png")
 LAST_FRAME_IMAGE = os.path.join(OUTPUT_DIR, "last_frame.png")
 FINAL_VIDEO = os.path.join(OUTPUT_DIR, "finaloutput.mp4")
 MERGE_LIST = os.path.join(OUTPUT_DIR, "merge_list.txt")
-STREAM_DIR = os.path.join("static", "stream")
+STREAM_DIR = os.path.join("outputs", "stream")
 M3U8_PATH = os.path.join(STREAM_DIR, "playlist.m3u8")
+
+IS_WIN = sys.platform.startswith("win")
+FFMPEG = os.path.join("tools", "ffmpeg", "bin", "ffmpeg.exe" if IS_WIN else "ffmpeg")
+FFPROBE = os.path.join("tools", "ffmpeg", "bin", "ffprobe.exe" if IS_WIN else "ffprobe")
 
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 os.makedirs(STREAM_DIR, exist_ok=True)
@@ -43,9 +51,11 @@ with open(M3U8_PATH, "w") as f:
     f.write("#EXT-X-MEDIA-SEQUENCE:0\n")
 
 def run(command, cwd=None):
-    print(f"[RUN] {' '.join(command) if isinstance(command, list) else command}")
+    if isinstance(command, list):
+        command = ' '.join(f'"{c}"' if ' ' in c else c for c in command)
+    print(f"[RUN] {command}")
     try:
-        subprocess.run(command, cwd=cwd, shell=isinstance(command, str), check=True)
+        subprocess.run(command, cwd=cwd, shell=True, check=True)
     except subprocess.CalledProcessError as e:
         print(f"[ERROR] {e}")
         sys.exit(1)
@@ -59,7 +69,7 @@ def get_latest_output(directory):
 
 def extract_last_frame(video_path, output_image_path):
     print(f"[INFO] Extracting last frame from {video_path} to {output_image_path}")
-    command = f"ffmpeg -y -sseof -3 -i \"{video_path}\" -vframes 1 \"{output_image_path}\""
+    command = f"{FFMPEG} -y -sseof -3 -i \"{video_path}\" -vframes 1 \"{output_image_path}\""
     run(command)
 
 def safe_remove(filepath):
@@ -70,7 +80,7 @@ def safe_remove(filepath):
 def get_duration(filepath):
     result = subprocess.run(
         [
-            "ffprobe", "-v", "error",
+            FFPROBE, "-v", "error",
             "-show_entries", "format=duration",
             "-of", "json", filepath
         ],
@@ -80,17 +90,71 @@ def get_duration(filepath):
     duration = json.loads(result.stdout)["format"]["duration"]
     return round(float(duration), 3)
 
-# Clean old files
-for i in range(num_iterations):
-    safe_remove(os.path.join(OUTPUT_DIR, f"chunk{i+1}.mp4"))
-    safe_remove(os.path.join(STREAM_DIR, f"chunk{i+1}.ts"))
-safe_remove(FINAL_VIDEO)
-safe_remove(LAST_FRAME_IMAGE)
-safe_remove(MERGE_LIST)
+def has_audio_stream(filepath):
+    result = subprocess.run(
+        [
+            FFPROBE, "-v", "error",
+            "-select_streams", "a",
+            "-show_entries", "stream=codec_type",
+            "-of", "default=nw=1",
+            filepath
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE
+    )
+    return b"codec_type=audio" in result.stdout
+
+def slow_down_video(input_path, output_path, speed_percent):
+    speed_factor = speed_percent / 100.0
+    video_filter = f"setpts={1/speed_factor}*PTS"
+    has_audio = has_audio_stream(input_path)
+
+    if has_audio:
+        audio_filters = []
+        tempo = speed_factor
+        while tempo < 0.5:
+            audio_filters.append("atempo=0.5")
+            tempo *= 2
+        while tempo > 2.0:
+            audio_filters.append("atempo=2.0")
+            tempo /= 2
+        audio_filters.append(f"atempo={tempo}")
+        audio_filter_chain = ",".join(audio_filters)
+
+        cmd = [
+            FFMPEG, "-y", "-i", input_path,
+            "-filter_complex", f"[0:v]{video_filter}[v];[0:a]{audio_filter_chain}[a]",
+            "-map", "[v]", "-map", "[a]",
+            "-c:v", "libx264",
+            "-c:a", "aac",
+            output_path
+        ]
+    else:
+        cmd = [
+            FFMPEG, "-y", "-i", input_path,
+            "-filter:v", video_filter,
+            "-c:v", "libx264",
+            "-an",
+            output_path
+        ]
+
+    run(cmd)
+    print(f"[DEBUG] slowdown applied → checking duration...")
+    print(f"[DEBUG] New file: {output_path}, duration: {get_duration(output_path)}s")
+
+starter_chunks = [f for f in os.listdir(STREAM_DIR) if f.startswith("starter_chunk") and f.endswith(".ts")]
 
 current_input_image = INPUT_IMAGE
 for i in range(num_iterations):
     print(f"\n[STEP] Iteration {i+1}/{num_iterations}")
+
+    # 1. 🔁 Pick and insert 3 starter chunks
+    inserted_starters = random.sample(starter_chunks, 3)
+    with open(M3U8_PATH, "a") as f:
+        for starter in inserted_starters:
+            f.write(f"#EXTINF:5.0,\n{starter}\n")
+    print(f"[INFO] Inserted starter chunks: {inserted_starters}")
+
     if len(used_priority_animations) < len(priority_animations):
         available_priority = list(set(priority_animations) - used_priority_animations)
         driving_video = random.choice(available_priority)
@@ -103,15 +167,14 @@ for i in range(num_iterations):
     os.makedirs(temp_output_dir, exist_ok=True)
 
     print(f"[INFO] Using driving video: {driving_video_path}")
-    
-    
+
     run([
-    "conda", "run", "-n", CONDA_ENV, "python", INFERENCE_SCRIPT,
-    "-s", current_input_image,
-    "-d", driving_video_path,
-    "-o", temp_output_dir,
-    "--animation_region", "all"
-])
+        "conda", "run", "-n", CONDA_ENV, "python", INFERENCE_SCRIPT,
+        "-s", current_input_image,
+        "-d", driving_video_path,
+        "-o", temp_output_dir,
+        "--animation_region", "all"
+    ])
 
     if not os.path.isdir(temp_output_dir):
         print(f"[ERROR] Expected output directory {temp_output_dir} does not exist")
@@ -120,37 +183,41 @@ for i in range(num_iterations):
     output_video = get_latest_output(temp_output_dir)
     chunk_name = os.path.join(OUTPUT_DIR, f"chunk{i+1}.mp4")
     os.rename(output_video, chunk_name)
-    print(f"[INFO] Renamed output to {chunk_name}")
-    generated_videos.append(chunk_name)
 
-    # Convert to TS for streaming
+    if APPLY_SLOWDOWN:
+        slowed_chunk = os.path.join(OUTPUT_DIR, f"chunk{i+1}_slow.mp4")
+        slow_down_video(chunk_name, slowed_chunk, TARGET_SPEED_PERCENT)
+        os.remove(chunk_name)
+        os.rename(slowed_chunk, chunk_name)
+
     stream_chunk = os.path.join(STREAM_DIR, f"chunk{i+1}.ts")
-    ffmpeg_cmd = f"ffmpeg -y -i {chunk_name} -c:v copy -c:a copy -bsf:v h264_mp4toannexb -f mpegts {stream_chunk}"
+    ffmpeg_cmd = f"{FFMPEG} -y -i {chunk_name} -c:v copy -c:a copy -bsf:v h264_mp4toannexb -f mpegts {stream_chunk}"
     run(ffmpeg_cmd)
-    print(f"[INFO] Converted to TS format: {stream_chunk}")
 
-       # Append to playlist with accurate EXTINF (no ENDLIST for live-style playback)
     duration = get_duration(stream_chunk)
+
     with open(M3U8_PATH, "r+") as f:
         lines = f.readlines()
-        # remove any existing ENDLIST
-        lines = [line for line in lines if line.strip() != "#EXT-X-ENDLIST"]
+        if len(lines) >= 6:
+            lines = lines[:-6]  # Remove last 3 EXTINF + filenames
         lines.append(f"#EXTINF:{duration},\nchunk{i+1}.ts\n")
         f.seek(0)
         f.writelines(lines)
         f.truncate()
+    print(f"[INFO] Replaced starter chunks with real chunk{i+1}.ts")
 
     extract_last_frame(chunk_name, LAST_FRAME_IMAGE)
     current_input_image = LAST_FRAME_IMAGE
     shutil.rmtree(temp_output_dir)
 
-# Merge final video (not used for streaming, but kept for download)
+    generated_videos.append(chunk_name)
+
 print("\n[INFO] Merging chunks into final output...")
 with open(MERGE_LIST, "w") as f:
     for vid in generated_videos:
         f.write(f"file '{os.path.basename(vid)}'\n")
 
-run(f"ffmpeg -y -f concat -safe 0 -i {MERGE_LIST} -c copy {FINAL_VIDEO}")
+run(f"{FFMPEG} -y -f concat -safe 0 -i {MERGE_LIST} -c copy {FINAL_VIDEO}")
 
 if not os.path.isfile(FINAL_VIDEO):
     print(f"[ERROR] Merging failed. {FINAL_VIDEO} not created.")
