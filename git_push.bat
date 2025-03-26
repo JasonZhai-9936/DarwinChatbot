@@ -1,6 +1,11 @@
 @echo off
-echo Adding changes...
-git add .
+echo Adding changes (excluding /assets folder)...
+
+REM unstage anything in /assets just in case
+git reset assets/
+
+REM 
+git add . ":!assets"
 
 echo Committing changes...
 git commit -m ".bat commit"
@@ -8,4 +13,4 @@ git commit -m ".bat commit"
 echo Pushing to remote...
 git push
 
-echo Finished
+echo Finished.
