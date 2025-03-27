@@ -22,30 +22,6 @@ def get_duration(filepath):
     duration = json.loads(result.stdout)["format"]["duration"]
     return round(float(duration), 3)
 
-def reencode_chunk(input_path, output_path):
-    command = [
-        FFMPEG,
-        "-y", "-i", input_path,
-        "-c:v", "libx264",
-        "-preset", "veryfast",
-        "-profile:v", "main",
-        "-level", "3.1",
-        "-r", "24",
-        "-g", "48",
-        "-keyint_min", "48",
-        "-sc_threshold", "0",
-        "-pix_fmt", "yuv420p",
-        "-c:a", "aac",
-        "-ar", "48000",
-        "-b:a", "128k",
-        "-ac", "2",
-        "-f", "mpegts",
-        "-muxpreload", "0",
-        "-muxdelay", "0",
-        output_path
-    ]
-    subprocess.run(command, check=True)
-
 # === Clean and initialize stream directory ===
 for f in os.listdir(STREAM_DIR):
     if f.endswith(".ts") or f == "playlist.m3u8":
@@ -62,36 +38,59 @@ with open(M3U8_PATH, "w") as f:
 with open(STREAM_LOG, "w") as f:
     f.write("=== STREAM TEST (REPEAT MODE) START ===\n")
 
-# === Repeatedly reencode starter_chunk1.ts ===
+# === Input chunk ===
 input_chunk = os.path.join(STARTER_CHUNK_DIR, "starter_chunk1.ts")
 
 if not os.path.exists(input_chunk):
     print("[ERROR] starter_chunk1.ts not found.")
     exit(1)
 
-repeat_count = 5  # how many times to repeat the chunk
+# Use a fixed duration (or use get_duration(input_chunk) if needed)
+duration = 20
 
-for i in range(repeat_count):
-    dest_name = f"starter{i+1}.ts"
+# === Insert starter1.ts and delete it quickly to simulate early segment loss ===
+starter1_name = "starter1.ts"
+starter1_path = os.path.join(STREAM_DIR, starter1_name)
+
+shutil.copyfile(input_chunk, starter1_path)
+
+with open(M3U8_PATH, "a") as f:
+    f.write(f"#EXTINF:{duration},\n{starter1_name}\n")
+
+with open(STREAM_LOG, "a") as f:
+    f.write(f"[INIT] {starter1_name} inserted (to be deleted early)\n")
+
+print(f"[INFO] Inserted {starter1_name} → duration {duration}s")
+time.sleep(1)
+os.remove(starter1_path)
+print(f"[INFO] Deleted {starter1_name} before playback reached it")
+
+# === Continue with repeating and testing mid-stream deletions ===
+repeat_count = 5
+
+for i in range(2, repeat_count + 2):  # start at 2 to avoid conflict with starter1.ts
+    dest_name = f"starter{i}.ts"
     dest_path = os.path.join(STREAM_DIR, dest_name)
 
-    try:
-        reencode_chunk(input_chunk, dest_path)
-    except subprocess.CalledProcessError:
-        print(f"[ERROR] Re-encoding failed on repetition {i+1}")
-        continue
-
-    duration = get_duration(dest_path)
+    shutil.copyfile(input_chunk, dest_path)
 
     with open(M3U8_PATH, "a") as f:
-        if i > 0:
-            f.write("#EXT-X-DISCONTINUITY\n")
+        f.write("#EXT-X-DISCONTINUITY\n")
         f.write(f"#EXTINF:{duration},\n{dest_name}\n")
 
     with open(STREAM_LOG, "a") as f:
         f.write(f"[REPEAT] {dest_name} inserted\n")
 
     print(f"[INFO] Inserted {dest_name} → duration {duration}s")
-    time.sleep(5)  # simulate live delay
+
+    if i in [2, 3]:  # simulate deletion and re-addition
+        time.sleep(2)
+        os.remove(dest_path)
+        print(f"[INFO] Deleted {dest_name}")
+        time.sleep(1)
+        shutil.copyfile(input_chunk, dest_path)
+        print(f"[INFO] Re-added {dest_name}")
+
+    time.sleep(2)
 
 print("[✅ DONE] Repeated chunk streaming completed.")

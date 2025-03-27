@@ -1,8 +1,7 @@
-=== STREAM SESSION START ===
-[STARTER] starter_chunk2.ts
-[STARTER] starter_chunk1.ts
-[STARTER] starter_chunk3.ts
-[REAL] chunk1.ts from arod.mp4
-[STARTER] starter_chunk2.ts
-[STARTER] starter_chunk3.ts
-[STARTER] starter_chunk1.ts
+=== STREAM TEST (REPEAT MODE) START ===
+[INIT] starter1.ts inserted (to be deleted early)
+[REPEAT] starter2.ts inserted
+[REPEAT] starter3.ts inserted
+[REPEAT] starter4.ts inserted
+[REPEAT] starter5.ts inserted
+[REPEAT] starter6.ts inserted
