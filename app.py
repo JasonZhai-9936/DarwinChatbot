@@ -24,27 +24,6 @@ os.makedirs(STREAM_DIR, exist_ok=True)
 def run_video_generation():
     subprocess.run(["python", "LivePortraitMainStream.py"], env=env)
 
-def generate_m3u8():
-    """Polls the stream directory and updates the .m3u8 playlist dynamically."""
-    chunk_index = 1
-    with open(M3U8_PATH, "w") as f:
-        f.write("#EXTM3U\n")
-        f.write("#EXT-X-VERSION:3\n")
-        f.write("#EXT-X-TARGETDURATION:5\n")
-        f.write("#EXT-X-MEDIA-SEQUENCE:0\n")
-
-    while True:
-        chunk_path = os.path.join(STREAM_DIR, f"chunk{chunk_index}.mp4")
-        if os.path.exists(chunk_path):
-            with open(M3U8_PATH, "a") as f:
-                f.write(f"#EXTINF:5.0,\nchunk{chunk_index}.ts\n")
-            chunk_index += 1
-        else:
-            time.sleep(1)
-        # End stream if finaloutput is done
-        if os.path.exists(VIDEO_PATH):
-            break
-
 @app.route("/", methods=["GET", "POST"])
 def index():
     if request.method == "POST":
@@ -53,9 +32,13 @@ def index():
         action = request.form.get("action")
 
         if action == "generate":
-            print("[INFO] Launching generation in background threads")
+            print("[INFO] Launching full generation in background thread")
             threading.Thread(target=run_video_generation).start()
-            threading.Thread(target=generate_m3u8).start()
+            return redirect(url_for("stream"))
+
+        elif action == "test":
+            print("[INFO] Running teststream.py to stream starter chunks")
+            threading.Thread(target=lambda: subprocess.run(["python", "teststream.py"], env=env)).start()
             return redirect(url_for("stream"))
 
     return render_template("index.html")

@@ -1,21 +1,21 @@
 === STREAM SESSION START ===
-[STARTER] starter_chunk2.ts
-[STARTER] starter_chunk1.ts
-[STARTER] starter_chunk3.ts
-[REAL] chunk1.ts from d11.mp4
-[STARTER] starter_chunk2.ts
 [STARTER] starter_chunk3.ts
 [STARTER] starter_chunk1.ts
-[REAL] chunk2.ts from d3.mp4
+[STARTER] starter_chunk2.ts
+[REAL] chunk1.ts from d19.mp4
 [STARTER] starter_chunk1.ts
 [STARTER] starter_chunk3.ts
 [STARTER] starter_chunk2.ts
-[REAL] chunk3.ts from d19.mp4
+[REAL] chunk2.ts from d12.mp4
 [STARTER] starter_chunk2.ts
 [STARTER] starter_chunk1.ts
 [STARTER] starter_chunk3.ts
-[REAL] chunk4.ts from d12.mp4
-[STARTER] starter_chunk2.ts
+[REAL] chunk3.ts from d3.mp4
 [STARTER] starter_chunk3.ts
+[STARTER] starter_chunk1.ts
+[STARTER] starter_chunk2.ts
+[REAL] chunk4.ts from d11.mp4
+[STARTER] starter_chunk3.ts
+[STARTER] starter_chunk2.ts
 [STARTER] starter_chunk1.ts
 [REAL] chunk5.ts from d0.mp4

@@ -170,7 +170,8 @@ for i in range(num_iterations):
             dest_path = os.path.join(STREAM_DIR, starter_filename)
             if not os.path.exists(dest_path):
                 shutil.copyfile(starter_path, dest_path)
-            f.write(f"#EXTINF:5.0,\n{starter_filename}\n")
+            duration = get_duration(starter_path)
+            f.write(f"#EXTINF:{duration},\n{starter_filename}\n")
 
     with open(STREAM_LOG, "a") as f:
         for starter_path in inserted_starters:
@@ -216,10 +217,12 @@ for i in range(num_iterations):
 
     duration = get_duration(stream_chunk)
 
+
+    #each starter_chunk removal removes 2 lines(the chunk and #EXTINF:5.0)
     with open(M3U8_PATH, "r+") as f:
         lines = f.readlines()
-        if len(lines) >= 6:
-            lines = lines[:-6]
+        if len(lines) >= STARTER_CHUNK_COUNT * 2:
+            lines = lines[:-(STARTER_CHUNK_COUNT * 2)]
         lines.append(f"#EXTINF:{duration},\nchunk{i+1}.ts\n")
         f.seek(0)
         f.writelines(lines)
