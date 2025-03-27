@@ -8,6 +8,7 @@ REM
 git add . ":!assets"
 
 echo Committing changes...
+git add .gitignore
 git commit -m ".bat commit"
 
 echo Pushing to remote...
