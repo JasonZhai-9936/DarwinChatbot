@@ -28,7 +28,7 @@ python3 install_requirements.py
 pip install -r requirements.txt
 
 
-#Additional tips if running into issues
+#Additional tips for my partners if running into issues
 
 # 1. 
 - run app.py using:
@@ -37,7 +37,7 @@ python app.py
 python3 app.y
 
 
-# 2. If there's missing libraries, which there likely may be, just conda activate the env and pip install it
+# 2. If there's missing libraries, which there almost certainly will be, just conda activate the env and pip install it(and let me know)
 ```
 
 
