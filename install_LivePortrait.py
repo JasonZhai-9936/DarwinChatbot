@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 # Run this to install LivePortrait (you might need to pip install opencv-python if it asks)
+=======
+# Run this to install ALL requirements (you might need to pip install opencv-python if it asks)
+>>>>>>> 4fa721c10edb1576b1df781e65b0a795d2f89dd3
 
 # /.install_flags tracks if each separate install component has already been run. 
 # IF you're running into install issues, delete the /.install_flags folder
