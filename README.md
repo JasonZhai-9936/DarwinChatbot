@@ -28,7 +28,11 @@ python3 install_requirements.py
 pip install -r requirements.txt
 
 
+<<<<<<< HEAD
 #Additional tips for my partners if running into issues
+=======
+#Additional tips if running into issues
+>>>>>>> 4fa721c10edb1576b1df781e65b0a795d2f89dd3
 
 # 1. 
 - run app.py using:
@@ -37,10 +41,14 @@ python app.py
 python3 app.y
 
 
+<<<<<<< HEAD
 # 2. If there's missing libraries, which there almost certainly will be, just conda activate the env and pip install it(and let me know)
 
 # 3. /.install_flags tracks if each separate install component has already been run. 
 #   If you're running into install issues, delete the /.install_flags folder
+=======
+# 2. If there's missing libraries, which there likely may be, just conda activate the env and pip install it
+>>>>>>> 4fa721c10edb1576b1df781e65b0a795d2f89dd3
 ```
 
 
