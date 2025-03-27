@@ -6,8 +6,8 @@ import sys
 
 INSTALL_LIST = [
     "install_LivePortrait.py",
-    "install_SadTalker.py",
-  
+    #"install_SadTalker.py",
+    #not used yet
 ]
 
 def run_installers():

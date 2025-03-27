@@ -16,7 +16,7 @@ REPO_DIR = "LivePortrait"
 INFERENCE_SCRIPT = os.path.join(REPO_DIR, "inference.py")
 ASSETS_DIR = os.path.join(REPO_DIR, "assets", "drivers")
 OUTPUT_DIR = os.path.join(REPO_DIR, "outputs")
-INPUT_IMAGE = os.path.join(REPO_DIR, "assets", "prompts", "Darwin4.png")
+INPUT_IMAGE = os.path.join(REPO_DIR, "assets", "prompts", "darwin_young.png")
 LAST_FRAME_IMAGE = os.path.join(OUTPUT_DIR, "last_frame.png")
 FINAL_VIDEO = os.path.join(OUTPUT_DIR, "finaloutput.mp4")
 MERGE_LIST = os.path.join(OUTPUT_DIR, "merge_list.txt")
@@ -41,7 +41,9 @@ for f in os.listdir(OUTPUT_DIR):
 with open(STREAM_LOG, "w") as f:
     f.write("=== STREAM SESSION START ===\n")
 
-priority_animations = ["d19.mp4", "d0.mp4", "d12.mp4", "d11.mp4", "d3.mp4"]
+priority_animations = ["arod.mp4"]
+
+#priority_animations = ["d19.mp4", "d0.mp4", "d12.mp4", "d11.mp4", "d3.mp4"]
 animations = [
     "d0.mp4", "d0.pkl", "d1.pkl", "d10.mp4", "d10.pkl",
     "d11.mp4", "d12.mp4", "d12.pkl", "d13.mp4", "d14.mp4",
@@ -58,7 +60,7 @@ generated_videos = []
 with open(M3U8_PATH, "w") as f:
     f.write("#EXTM3U\n")
     f.write("#EXT-X-VERSION:3\n")
-    f.write("#EXT-X-TARGETDURATION:5\n")
+    f.write("#EXT-X-TARGETDURATION:45\n")
     f.write("#EXT-X-MEDIA-SEQUENCE:0\n")
 
 def run(command, cwd=None):

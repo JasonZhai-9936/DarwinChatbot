@@ -8,6 +8,7 @@ Make sure you have `ffmpeg` and `ffprobe` installed on your system. If you don't
 ### Conda Users
 
 ```bash
+cd /tools
 conda install ffmpeg
 ```
 

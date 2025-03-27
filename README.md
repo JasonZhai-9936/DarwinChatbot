@@ -38,6 +38,9 @@ python3 app.y
 
 
 # 2. If there's missing libraries, which there almost certainly will be, just conda activate the env and pip install it(and let me know)
+
+# 3. /.install_flags tracks if each separate install component has already been run. 
+#   If you're running into install issues, delete the /.install_flags folder
 ```
 
 

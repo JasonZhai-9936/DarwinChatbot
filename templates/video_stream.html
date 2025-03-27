@@ -1,47 +1,106 @@
 <!DOCTYPE html>
 <html>
-<head><title>Live Stream</title></head>
+<head>
+  <title>Live Stream</title>
+</head>
 <body>
   <h2>LivePortrait Streaming</h2>
   <video id="video" width="720" controls autoplay></video>
+
   <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
   <script>
+    const video = document.getElementById("video");
+
     if (Hls.isSupported()) {
+      // ✅ Enable HLS.js debug logs
+      Hls.DefaultConfig.debug = true;
+      console.log("✅ HLS.js Debug Mode ON");
+
       const hls = new Hls({
         liveDurationInfinity: true,
         lowLatencyMode: false,
-        backBufferLength: 90,
-        maxBufferLength: 120,
-        maxMaxBufferLength: 120,
-        maxBufferSize: 60 * 1000 * 1000,
-        maxBufferHole: 0.5,
+        startPosition: 0,
+      
+        // 🔧 Smaller, responsive buffer sizes
+        backBufferLength: 15,
+        maxBufferLength: 30,
+        maxMaxBufferLength: 60,
+        maxBufferSize: 50 * 1000 * 1000, // ~50MB
+        maxBufferHole: 0.1,
+      
+        // 🛠️ Network and retry tuning
         enableWorker: true,
         appendErrorMaxRetry: 10,
         fragLoadingTimeOut: 6000,
         manifestLoadingTimeOut: 6000,
-        manifestLoadingMaxRetry: 50,
-        manifestLoadingRetryDelay: 2000,
-        manifestLoadingMaxRetryTimeout: 64000
+        manifestLoadingMaxRetry: 10,
+        manifestLoadingRetryDelay: 1000,
+        manifestLoadingMaxRetryTimeout: 30000,
+      
+        // 🧠 Live settings
+        liveSyncDuration: 3,
+        maxLiveSyncPlaybackRate: 1.5,
+      
+        // ⏱ Watchdog (tight timing = better stall detection)
+        highBufferWatchdogPeriod: 0.5,
+        lowBufferWatchdogPeriod: 0.25
       });
-  
-      const video = document.getElementById("video");
-      hls.loadSource("/outputs/stream/playlist.m3u8");
+
       hls.attachMedia(video);
+      hls.loadSource("/outputs/stream/playlist.m3u8");
+
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
-        hls.startLoad();  // ⬅️ Triggers periodic reloading of playlist
+        console.log("[HLS] Manifest parsed. Starting playback...");
+        hls.startLoad(0);
+        video.currentTime = 0;
         video.play();
       });
-  
-      // Optional: Log fragment load to verify updates
-      hls.on(Hls.Events.FRAG_LOADED, (event, data) => {
-        console.log(`[HLS] Loaded fragment: ${data.frag.sn}`);
+
+      hls.on(Hls.Events.ERROR, function (event, data) {
+        console.warn("[HLS ERROR]", data);
+
+        if (data.fatal) {
+          switch (data.type) {
+            case Hls.ErrorTypes.NETWORK_ERROR:
+              console.log("[HLS] Fatal NETWORK error → retrying");
+              hls.startLoad();
+              break;
+            case Hls.ErrorTypes.MEDIA_ERROR:
+              console.log("[HLS] Fatal MEDIA error → recovering");
+              hls.recoverMediaError();
+              break;
+            default:
+              console.log("[HLS] Fatal unknown error → destroying");
+              hls.destroy();
+              break;
+          }
+        }
       });
+
+      // 🔍 HLS Fragment Logging
+      hls.on(Hls.Events.FRAG_LOADED, (e, d) => console.log(`[HLS] Fragment Loaded: ${d.frag.sn}`));
+      hls.on(Hls.Events.FRAG_BUFFERED, (e, d) => console.log(`[HLS] Fragment Buffered: ${d.frag.sn}`));
+      hls.on(Hls.Events.BUFFER_APPENDED, () => console.log("[HLS] Buffer Appended"));
+      hls.on(Hls.Events.LEVEL_LOADED, (e, d) => console.log(`[HLS] Level loaded: ${d.details.fragments.length} fragments`));
+      hls.on(Hls.Events.FRAG_CHANGED, (e, d) => console.log(`[HLS] Switched to fragment: ${d.frag.sn}`));
+
     } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
       video.src = "/outputs/stream/playlist.m3u8";
+      video.currentTime = 0;
       video.play();
     }
+
+    // 🎥 VIDEO ELEMENT EVENTS (MSE playback state)
+    video.addEventListener("waiting", () => console.log("[VIDEO] waiting…"));
+    video.addEventListener("stalled", () => console.log("[VIDEO] stalled"));
+    video.addEventListener("ended", () => console.log("[VIDEO] ended"));
+    video.addEventListener("timeupdate", () => {
+      console.log(`[VIDEO] currentTime: ${video.currentTime.toFixed(2)}s`);
+    });
+
+    
   </script>
-  
+
   <br><a href="/">⬅️ Back</a>
 </body>
 </html>

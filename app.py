@@ -49,6 +49,7 @@ def stream():
 
 @app.route("/outputs/stream/<filename>")
 def stream_chunks(filename):
+    print(f"[STREAM] Client requested: {filename}")
     return send_from_directory(STREAM_DIR, filename)
 
 @app.route("/LivePortrait/outputs/finaloutput.mp4")
