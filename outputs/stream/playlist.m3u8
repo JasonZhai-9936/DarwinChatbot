@@ -5,7 +5,13 @@
 #EXT-X-TARGETDURATION:45
 #EXT-X-MEDIA-SEQUENCE:0
 #EXTINF:20,
-starter5.ts
+starter1.ts
 #EXT-X-DISCONTINUITY
 #EXTINF:20,
-starter6.ts
+starter2.ts
+#EXT-X-DISCONTINUITY
+#EXTINF:20,
+starter3.ts
+#EXT-X-DISCONTINUITY
+#EXTINF:20,
+starter4.ts
