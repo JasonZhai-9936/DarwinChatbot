@@ -3,5 +3,3 @@
 [REPEAT] starter2.ts inserted
 [REPEAT] starter3.ts inserted
 [REPEAT] starter4.ts inserted
-[REPEAT] starter5.ts inserted
-[REPEAT] starter6.ts inserted
