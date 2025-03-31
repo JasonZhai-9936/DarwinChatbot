@@ -9,7 +9,7 @@ import json
 # ==== CONFIG ====
 APPLY_SLOWDOWN = True
 TARGET_SPEED_PERCENT = 70
-STARTER_CHUNK_COUNT = 3
+STARTER_CHUNK_COUNT = 2
 
 CONDA_ENV = "LivePortrait"
 REPO_DIR = "LivePortrait"
@@ -211,8 +211,18 @@ for i in range(num_iterations):
     if APPLY_SLOWDOWN:
         slowed_chunk = os.path.join(OUTPUT_DIR, f"chunk{i+1}_slow.mp4")
         slow_down_video(chunk_name, slowed_chunk, TARGET_SPEED_PERCENT)
+
+        reencoded_chunk = os.path.join(OUTPUT_DIR, f"chunk{i+1}_final.mp4")
+        run([
+            FFMPEG, "-y", "-i", slowed_chunk,
+            "-c:v", "libx264", "-profile:v", "main", "-level", "4.0", "-pix_fmt", "yuv420p",
+            "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart",
+            reencoded_chunk
+        ])
+
         os.remove(chunk_name)
-        os.rename(slowed_chunk, chunk_name)
+        os.remove(slowed_chunk)
+        chunk_name = reencoded_chunk
 
     stream_chunk = os.path.join(STREAM_DIR, f"chunk{i+1}.ts")
     run(f"{FFMPEG} -y -i {chunk_name} -c:v copy -c:a copy -bsf:v h264_mp4toannexb -f mpegts {stream_chunk}")
