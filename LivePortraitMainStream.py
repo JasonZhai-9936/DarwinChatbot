@@ -16,7 +16,7 @@ REPO_DIR = "LivePortrait"
 INFERENCE_SCRIPT = os.path.join(REPO_DIR, "inference.py")
 ASSETS_DIR = os.path.join(REPO_DIR, "assets", "drivers")
 OUTPUT_DIR = os.path.join(REPO_DIR, "outputs")
-INPUT_IMAGE = os.path.join(REPO_DIR, "assets", "prompts", "darwin_young.png")
+INPUT_IMAGE = os.path.join(REPO_DIR, "assets", "prompts", "Darwin3.png")
 LAST_FRAME_IMAGE = os.path.join(OUTPUT_DIR, "last_frame.png")
 FINAL_VIDEO = os.path.join(OUTPUT_DIR, "finaloutput.mp4")
 MERGE_LIST = os.path.join(OUTPUT_DIR, "merge_list.txt")
@@ -41,9 +41,7 @@ for f in os.listdir(OUTPUT_DIR):
 with open(STREAM_LOG, "w") as f:
     f.write("=== STREAM SESSION START ===\n")
 
-priority_animations = ["arod.mp4"]
-
-#priority_animations = ["d19.mp4", "d0.mp4", "d12.mp4", "d11.mp4", "d3.mp4"]
+priority_animations = ["d13.mp4", "d11.mp4", "d12.mp4"]
 animations = [
     "d0.mp4", "d0.pkl", "d1.pkl", "d10.mp4", "d10.pkl",
     "d11.mp4", "d12.mp4", "d12.pkl", "d13.mp4", "d14.mp4",
@@ -229,12 +227,22 @@ for i in range(num_iterations):
 
     duration = get_duration(stream_chunk)
 
-
-    #each starter_chunk removal removes 2 lines(the chunk and #EXTINF:5.0)
     with open(M3U8_PATH, "r+") as f:
         lines = f.readlines()
-        if len(lines) >= STARTER_CHUNK_COUNT * 2:
-            lines = lines[:-(STARTER_CHUNK_COUNT * 2)]
+
+        num_lines_to_remove = STARTER_CHUNK_COUNT * 2
+        if len(lines) >= num_lines_to_remove:
+            lines = lines[:-(num_lines_to_remove)]
+
+            # === FIX: Bump #EXT-X-MEDIA-SEQUENCE ===
+            for idx, line in enumerate(lines):
+                if line.startswith("#EXT-X-MEDIA-SEQUENCE"):
+                    seq_num = int(line.strip().split(":")[1])
+                    new_seq = seq_num + STARTER_CHUNK_COUNT
+                    lines[idx] = f"#EXT-X-MEDIA-SEQUENCE:{new_seq}\n"
+                    print(f"[INFO] Updated media sequence to {new_seq}")
+                    break
+
         lines.append(f"#EXTINF:{duration},\nchunk{i+1}.ts\n")
         f.seek(0)
         f.writelines(lines)
