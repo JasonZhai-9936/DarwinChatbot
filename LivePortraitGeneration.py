@@ -1,5 +1,3 @@
-# This .py handles various generations, such as generating starter chunks
-
 import os
 import subprocess
 import random
@@ -13,7 +11,7 @@ OUTPUT_DIR = os.path.join("outputs", OUTPUT_SUBDIR)
 CONDA_ENV = "LivePortrait"
 REPO_DIR = "LivePortrait"
 INFERENCE_SCRIPT = os.path.join(REPO_DIR, "inference.py")
-INPUT_IMAGE = os.path.join(REPO_DIR, "assets", "prompts", "Darwin4.png")
+INPUT_IMAGE = os.path.join(REPO_DIR, "assets", "prompts", "darwin_young.png")
 ASSETS_DIR = os.path.join(REPO_DIR, "assets", "drivers")
 FFMPEG = os.path.join("tools", "ffmpeg", "bin", "ffmpeg.exe" if os.name == "nt" else "ffmpeg")
 LAST_FRAME_IMAGE = os.path.join(OUTPUT_DIR, "last_frame.png")
@@ -118,7 +116,7 @@ def generate_starter_chunks():
         idx = name.replace("starter_chunk", "")
         if idx.isdigit():
             existing_indexes.append(int(idx))
-    final_index = max(existing_indexes + [0]) + 1  # this run's starter_chunk index
+    final_index = max(existing_indexes + [0]) + 1
 
     temp_ts_paths = []
 
@@ -153,12 +151,21 @@ def generate_starter_chunks():
         temp_mp4 = os.path.join(OUTPUT_DIR, f"temp_starter_chunk{i+1}.mp4")
         shutil.move(mp4_files[0], temp_mp4)
 
-        # Optional slowdown
+        # === SLOWDOWN & RE-ENCODE ===
         if APPLY_SLOWDOWN:
             slowed_mp4 = os.path.join(OUTPUT_DIR, f"temp_starter_chunk{i+1}_slow.mp4")
             slow_down_video(temp_mp4, slowed_mp4, TARGET_SPEED_PERCENT)
+
+            reencoded_mp4 = os.path.join(OUTPUT_DIR, f"temp_starter_chunk{i+1}_final.mp4")
+            run([
+                FFMPEG, "-y", "-i", slowed_mp4,
+                "-c:v", "libx264", "-profile:v", "main", "-level", "4.0", "-pix_fmt", "yuv420p",
+                "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart",
+                reencoded_mp4
+            ])
             os.remove(temp_mp4)
-            os.rename(slowed_mp4, temp_mp4)
+            os.remove(slowed_mp4)
+            temp_mp4 = reencoded_mp4
 
         temp_ts = os.path.join(OUTPUT_DIR, f"temp_starter_chunk{i+1}.ts")
         run([
@@ -199,3 +206,4 @@ def generate_starter_chunks():
 
 if __name__ == "__main__":
     generate_starter_chunks()
+[]
