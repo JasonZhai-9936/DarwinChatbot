@@ -5,11 +5,11 @@ import glob
 from pathlib import Path
 
 # === Config ===
-REPO_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))  # your repo root
-LATENTSYNC_DIR = os.path.join(REPO_DIR, "LatentSync")                      # external repo root
+REPO_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))  
+LATENTSYNC_DIR = os.path.join(REPO_DIR, "LatentSync")                     
 CONDA_ENV = "LatentSync"
 
-INFERENCE_SCRIPT = os.path.join("scripts", "inference.py")                 # relative to LATENTSYNC_DIR
+INFERENCE_SCRIPT = os.path.join("scripts", "inference.py")                 
 CONFIG_PATH = os.path.join(LATENTSYNC_DIR, "configs", "unet", "stage2.yaml")
 CHECKPOINT_PATH = os.path.join(LATENTSYNC_DIR, "checkpoints", "latentsync_unet.pt")
 STREAM_SPEECH_DIR = os.path.join(REPO_DIR, "stream", "speech")
@@ -37,7 +37,7 @@ def run_latentsync_inference():
         return False
 
     audio_filename = Path(latest_audio).stem
-    output_path = os.path.join(STREAM_LIVE_DIR, f"{audio_filename}_lipsync.mp4")
+    output_path = os.path.join(STREAM_LIVE_DIR, f"final_{audio_filename}.mp4")
 
     os.makedirs(STREAM_LIVE_DIR, exist_ok=True)
 
@@ -56,7 +56,7 @@ def run_latentsync_inference():
 ]
 
     try:
-        run(command, cwd=LATENTSYNC_DIR)  # run from LatentSync root
+        run(command, cwd=LATENTSYNC_DIR) 
         print(f"[SUCCESS] Output saved to {output_path}")
         return True
     except Exception as e:
