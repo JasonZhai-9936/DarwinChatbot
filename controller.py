@@ -23,7 +23,7 @@ class Controller:
 
         threading.Thread(target=self.control_loop, daemon=False).start()
 
-    # === Flag Getters/Setters ===
+    
     def get_run_idle(self):
         return self.run_idle
 
@@ -59,9 +59,9 @@ class Controller:
                 time.sleep(2)
 
 
-# === Example trigger: replace this with real event or Flask route later ===
+
 def demo_trigger_lipsync(controller: Controller):
-    time.sleep(3)  # Wait 30 seconds before triggering
+    time.sleep(3)  # Wait 10 seconds before triggering
     print("[DEMO] Triggering lipsync task after 30s delay...")
     controller.set_run_idle(False)
     controller.set_run_lipsync(True)
