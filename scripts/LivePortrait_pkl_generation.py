@@ -25,7 +25,7 @@ PKL_ROOT_DIR = os.path.join(IDLE_VIDEO_DIR, "pkls")
 IDLE_SOURCE_DIR = os.path.join(IDLE_VIDEO_DIR, "idle_videos")
 TALKING_SOURCE_DIR = os.path.join(IDLE_VIDEO_DIR, "talking_videos")
 
-# === Reusable run() ===
+
 def run(command, cwd=None):
     print(f"[RUN] {' '.join(command) if isinstance(command, list) else command}")
     try:
