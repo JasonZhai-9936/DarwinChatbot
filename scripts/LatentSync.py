@@ -1,3 +1,4 @@
+#latentsync
 import os
 import sys
 import subprocess
@@ -17,20 +18,38 @@ STREAM_LIVE_DIR = os.path.join(REPO_DIR, "stream", "live")
 VIDEO_INPUT_PATH = os.path.join(REPO_DIR, "stream", "talking_chunks", "chunk4.mp4")
 
 # === Utilities ===
-def run(command, cwd=None):
-    print(f"[RUN] {' '.join(command) if isinstance(command, list) else command}")
-    subprocess.run(command, cwd=cwd, shell=isinstance(command, str), check=True)
+def run(command, cwd=None, shell=False, fail_hard=False):
+    """
+    Runs a subprocess command.
+    - shell: True if command is a string; False for list-style command
+    - fail_hard: If True, raises error on failure; else logs and returns False
+    Returns: True on success, False on failure
+    """
+    cmd_str = command if isinstance(command, str) else ' '.join(command)
+    print(f"[RUN] {cmd_str}")
+
+    try:
+        subprocess.run(command, cwd=cwd, shell=shell or isinstance(command, str), check=True)
+        return True
+    except subprocess.CalledProcessError as e:
+        print(f"[ERROR] Command failed: {e}")
+        if fail_hard:
+            raise
+        return False
+
+
 
 def get_latest_audio(directory):
     audio_files = sorted(
         glob.glob(os.path.join(directory, "speech*")),
         key=os.path.getctime,
-        reverse=True
+        reverse=True    
     )
     return audio_files[0] if audio_files else None
 
 # === Main Inference Function ===
 def run_latentsync_inference():
+    print("Latentsync call started")
     latest_audio = get_latest_audio(STREAM_SPEECH_DIR)
     if not latest_audio:
         print("[ERROR] No speech audio found in /stream/speech.")
