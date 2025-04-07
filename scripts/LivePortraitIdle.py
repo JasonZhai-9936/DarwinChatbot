@@ -1,5 +1,3 @@
-# LivePortraitIdle.py
-
 import subprocess
 import os
 import sys
@@ -9,12 +7,11 @@ import shutil
 import time
 
 # === Config ===
-CONTROLLER_POLLING_INTERVAL = 4
 CONDA_ENV = "LivePortrait"
 
 # === Driver selection odds ===
-IDLE_MODE_IDLE_ODDS = 0.66         # 2/3 chance in idle mode to pick idle driver
-TALKING_MODE_IDLE_ODDS = 0.33      # 1/3 chance in talking mode to pick idle driver
+IDLE_MODE_IDLE_ODDS = 0.66
+TALKING_MODE_IDLE_ODDS = 0.33
 
 # === Paths ===
 REPO_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -46,7 +43,7 @@ def extract_last_frame(video_path, output_image_path):
     command = f"ffmpeg -y -sseof -3 -i \"{video_path}\" -vframes 1 \"{output_image_path}\""
     run(command)
 
-def generate_fixed_chunks(get_is_on, mode, chunks_per_video=3, start_video_index=1, video_limit=None):
+def generate_fixed_chunks(mode, chunks_per_video=3, start_video_index=1, video_limit=None):
     assert mode in ["idle", "talking"], "Mode must be either 'idle' or 'talking'"
 
     if mode == "idle":
@@ -78,15 +75,10 @@ def generate_fixed_chunks(get_is_on, mode, chunks_per_video=3, start_video_index
 
     video_index = max(existing_numbers, default=start_video_index - 1) + 1
     print(f"[INFO] Starting from chunk number {video_index}")
+    print("[INFO] Starting grouped chunk generation...")
 
-    print("[INFO] Starting infinite grouped chunk generation (or until video_limit)...")
-
-    while video_limit is None or video_index < start_video_index + video_limit:
-        if not get_is_on():
-            print("[WAITING] isOn is False. Waiting to generate...")
-            time.sleep(CONTROLLER_POLLING_INTERVAL)
-            return
-
+    videos_generated = 0
+    while video_limit is None or videos_generated < video_limit:
         print(f"\n[INFO] Starting video #{video_index} (will generate {chunks_per_video} chunks)")
 
         chunk_index = 1
@@ -162,6 +154,7 @@ def generate_fixed_chunks(get_is_on, mode, chunks_per_video=3, start_video_index
                 print(f"[WARN] Failed to delete {file_path}: {e}")
 
         video_index += 1
+        videos_generated += 1
 
     print(f"[COMPLETE] Reached video limit ({video_limit}). Generation stopped.")
 

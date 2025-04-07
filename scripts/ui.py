@@ -1,12 +1,14 @@
+# ui.py
+
 import json
 import os
 import time
-from nicegui import ui, app
+from nicegui import ui
 
 PLAYLIST_PATH = os.path.join("stream", "playlist", "playlist.json")
 PLAYLIST_FOLDER = "/stream"
 
-def build_ui(controller):
+def build_ui(trigger_response_callback):
     with ui.row().classes('w-full h-screen items-start justify-start gap-8 p-8'):
 
         # === VIDEO PLAYER ===
@@ -54,26 +56,11 @@ def build_ui(controller):
 
         # === RIGHT SIDE PANEL ===
         with ui.column().classes('items-start gap-4'):
-
-            # Prompt input and button
             with ui.row().classes('items-center gap-4'):
                 ui.input(label='Your prompt', placeholder='Type something...') \
                   .props('outlined') \
                   .classes('w-96')
                 ui.button('Enter Prompt', on_click=lambda: print('[INFO] Prompt submission placeholder'))
 
-            # Button row
-            with ui.row().classes('gap-4'):
-                ui.button("Start Idle Mode", on_click=lambda: (controller.set_idle(), update_ui()))
-                ui.button("Trigger Response Mode", on_click=lambda: (controller.set_response(), update_ui()))
-
-            # State indicators
-            idle_label = ui.label()
-            response_label = ui.label()
-
-            def update_ui():
-                idle_label.text = f"Idle_On: {controller.is_idle()}"
-                response_label.text = f"Response_On: {controller.is_response()}"
-
-            update_ui()
-
+            # Just one button now
+            ui.button("Trigger Response Mode", on_click=trigger_response_callback)
