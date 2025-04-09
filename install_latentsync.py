@@ -1,9 +1,13 @@
 # Run this to install LatentSync
 
+# /.install_flags tracks if each separate install component has already been run
+# If you're running into install issues, delete the /.install_flags folder
+
 import os
 import subprocess
 import sys
 import shutil
+import platform
 
 REPO_NAME = "LatentSync"
 REPO_URL = "https://github.com/bytedance/LatentSync.git"
@@ -22,9 +26,9 @@ def check_flag(step):
 def set_flag(step):
     open(flag_path(step), "w").close()
 
-def run(command, cwd=None, shell=False):
+def run(command, cwd=None, shell=False, env=None):
     print(f"> Running: {' '.join(command) if isinstance(command, list) else command}")
-    result = subprocess.run(command, cwd=cwd, shell=shell)
+    result = subprocess.run(command, cwd=cwd, shell=shell, env=env)
     if result.returncode != 0:
         print(f"Command failed: {command}")
         sys.exit(1)
@@ -51,69 +55,96 @@ def create_conda_env():
     print(f"Creating Conda environment '{CONDA_ENV}' with Python 3.10...")
     run(["conda", "create", "-y", "-n", CONDA_ENV, "python=3.10"])
 
-def setup_environment():
-    step = "setup_environment"
+def verify_env():
+    print(f"Verifying Conda env '{CONDA_ENV}'...")
+    run([
+        "conda", "run", "-n", CONDA_ENV,
+        "python", "-c", f"import sys; print('Python in {CONDA_ENV}:', sys.executable)"
+    ])
+
+def install_venv():
+    step = "install_venv"
+    if check_flag(step):
+        print(f"Skipping {step} (already done)")
+        return
+    print("Installing virtualenv...")
+    run([
+        "conda", "run", "-n", CONDA_ENV,
+        "pip", "install", "virtualenv"
+    ])
+    set_flag(step)
+
+def run_setup_script():
+    step = "run_setup_script"
     if check_flag(step):
         print(f"Skipping {step} (already done)")
         return
     
-    print("Setting up environment using setup_env.sh...")
+    print("Running setup_env.sh...")
     
-    # Create a temporary script to source setup_env.sh within conda environment
-    setup_script = f"""
-#!/bin/bash
-source activate {CONDA_ENV}
-cd {REPO_NAME}
+    # Determine the shell command based on platform
+    if platform.system() == "Windows":
+        # For Windows, we need to use bash from Git or WSL if available
+        try:
+            # Try with Git Bash
+            env_vars = os.environ.copy()
+            env_vars["CONDA_PREFIX"] = subprocess.check_output(
+                ["conda", "run", "-n", CONDA_ENV, "python", "-c", "import os; print(os.environ.get('CONDA_PREFIX'))"],
+                text=True
+            ).strip()
+            
+            run(["bash", "setup_env.sh"], cwd=REPO_NAME, env=env_vars)
+        except:
+            print("Could not run setup_env.sh with bash. Please run it manually after activating the conda environment.")
+            print("Commands to run:")
+            print(f"  conda activate {CONDA_ENV}")
+            print(f"  cd {REPO_NAME}")
+            print("  bash setup_env.sh")
+    else:
+        # For Linux/macOS
+        conda_prefix = subprocess.check_output(
+            ["conda", "run", "-n", CONDA_ENV, "python", "-c", "import os; print(os.environ.get('CONDA_PREFIX'))"],
+            text=True
+        ).strip()
+        
+        setup_content = f"""#!/bin/bash
+source "{conda_prefix}/etc/profile.d/conda.sh"
+conda activate {CONDA_ENV}
+cd {os.path.abspath(REPO_NAME)}
 source setup_env.sh
 """
-    
-    # Write the temporary script
-    with open("temp_setup.sh", "w") as f:
-        f.write(setup_script)
-    
-    # Make it executable
-    os.chmod("temp_setup.sh", 0o755)
-    
-    # Run the setup script
-    if sys.platform == "win32":
-        print("Windows detected. Please run the following commands manually after this script completes:")
-        print(f"conda activate {CONDA_ENV}")
-        print(f"cd {REPO_NAME}")
-        print("bash setup_env.sh")
-    else:
-        run(["bash", "./temp_setup.sh"], shell=False)
-    
-    # Clean up
-    if os.path.exists("temp_setup.sh"):
-        os.remove("temp_setup.sh")
+        
+        setup_script = "run_setup_latentsync.sh"
+        with open(setup_script, "w") as f:
+            f.write(setup_content)
+        
+        os.chmod(setup_script, 0o755)
+        run(["bash", setup_script])
+        os.remove(setup_script)
     
     set_flag(step)
-
-def verify_installation():
-    print(f"Verifying LatentSync installation in '{CONDA_ENV}'...")
-    try:
-        run([
-            "conda", "run", "-n", CONDA_ENV,
-            "python", "-c", 
-            "import torch; print(f'PyTorch version: {torch.__version__}'); "
-            "print(f'CUDA available: {torch.cuda.is_available()}')"
-        ])
-        print("PyTorch verification successful.")
-    except:
-        print("PyTorch verification failed. Installation might be incomplete.")
 
 def run_full_setup():
     print("Starting LatentSync setup...")
     clone_repo()
     create_conda_env()
-    setup_environment()
-    verify_installation()
+    verify_env()
+    install_venv()
     
-    print("\nSetup complete!")
+    # Run setup script or provide instructions
+    try:
+        run_setup_script()
+        print("\nSetup complete!")
+    except:
+        print("\nPartial setup complete.")
+        print("To complete the setup, run the following commands manually:")
+        print(f"  conda activate {CONDA_ENV}")
+        print(f"  cd {REPO_NAME}")
+        print("  source setup_env.sh")
+    
     print("\nTo use LatentSync:")
     print(f"  1. Activate the environment: conda activate {CONDA_ENV}")
     print(f"  2. Navigate to the repo: cd {REPO_NAME}")
-    print("  3. Run your scripts")
 
 if __name__ == "__main__":
     run_full_setup()
