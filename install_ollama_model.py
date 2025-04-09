@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Ollama and dolphin-mixtral Model Installer Script for container environments
-This version uses direct binary download instead of the official installer
+This version uses the official tarball download without requiring root privileges
 """
 
 import os
@@ -17,7 +17,7 @@ from pathlib import Path
 
 # Constants
 MODEL_NAME = "dolphin-mixtral"
-OLLAMA_LINUX_URL = "https://github.com/ollama/ollama/releases/latest/download/ollama-linux-amd64"
+OLLAMA_LINUX_URL = "https://ollama.com/download/ollama-linux-amd64.tgz"
 INSTALL_DIR = os.path.expanduser("~/bin")
 
 def run_command(cmd, shell=False, check=True, capture_output=True):
@@ -52,34 +52,39 @@ def get_ollama_version():
     except Exception as e:
         return f"Error getting version: {e}"
 
-def install_ollama_direct():
-    """Install Ollama directly without requiring root privileges"""
-    print("Installing Ollama directly from binary...")
+def install_ollama_manual():
+    """Install Ollama using the official tarball without requiring root privileges"""
+    print("Installing Ollama using official tarball...")
     
-    # Create install directory if it doesn't exist
-    os.makedirs(INSTALL_DIR, exist_ok=True)
+    # Create temp directory for download
+    temp_dir = tempfile.mkdtemp()
+    tarball_path = os.path.join(temp_dir, "ollama-linux-amd64.tgz")
     
-    # Download the Ollama binary
-    print(f"Downloading Ollama from {OLLAMA_LINUX_URL}...")
     try:
+        # Download the Ollama tarball
+        print(f"Downloading Ollama from {OLLAMA_LINUX_URL}...")
         response = requests.get(OLLAMA_LINUX_URL, stream=True)
         response.raise_for_status()
         
-        # Save the binary
-        ollama_path = os.path.join(INSTALL_DIR, "ollama")
-        with open(ollama_path, 'wb') as f:
+        # Save the tarball
+        with open(tarball_path, 'wb') as f:
             for chunk in response.iter_content(chunk_size=8192):
                 f.write(chunk)
         
-        # Make it executable
-        os.chmod(ollama_path, 0o755)
+        # Create install directory if it doesn't exist
+        os.makedirs(INSTALL_DIR, exist_ok=True)
+        
+        # Extract the tarball to the install directory
+        print(f"Extracting Ollama to {INSTALL_DIR}...")
+        with tarfile.open(tarball_path, 'r:gz') as tar:
+            tar.extractall(path=INSTALL_DIR)
         
         # Add to PATH temporarily for this session
         os.environ['PATH'] = f"{INSTALL_DIR}:{os.environ['PATH']}"
         
         # Test if it works
         if is_ollama_installed():
-            print(f"Ollama installed successfully at {ollama_path}")
+            print(f"Ollama installed successfully at {INSTALL_DIR}/ollama")
             print(f"Version: {get_ollama_version()}")
             return True
         else:
@@ -88,6 +93,12 @@ def install_ollama_direct():
     except Exception as e:
         print(f"Error installing Ollama: {e}")
         return False
+    finally:
+        # Clean up temp directory
+        try:
+            shutil.rmtree(temp_dir)
+        except:
+            pass
 
 def start_ollama_service():
     """Start the Ollama service in the background"""
@@ -146,15 +157,15 @@ def main():
     
     # Only works on Linux
     if system != "Linux":
-        print("This script is designed for Linux container environments only.")
+        print("This script is designed for Linux environments only.")
         sys.exit(1)
     
     # Check if Ollama is already installed
     if is_ollama_installed():
         print(f"Ollama is already installed. Version: {get_ollama_version()}")
     else:
-        # Install Ollama directly from binary
-        success = install_ollama_direct()
+        # Install Ollama using the manual method
+        success = install_ollama_manual()
         
         if not success:
             print("Ollama installation failed. Exiting.")
