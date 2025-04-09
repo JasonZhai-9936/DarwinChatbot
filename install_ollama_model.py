@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Ollama and dolphin-mixtral Model Installer Script
-Compatible with both Windows and Linux systems
+Ollama and dolphin-mixtral Model Installer Script for container environments
+This version uses direct binary download instead of the official installer
 """
 
 import os
@@ -12,12 +12,13 @@ import time
 import shutil
 import tempfile
 import requests
+import tarfile
 from pathlib import Path
 
 # Constants
 MODEL_NAME = "dolphin-mixtral"
-OLLAMA_WINDOWS_URL = "https://github.com/ollama/ollama/releases/latest/download/ollama-windows-amd64.zip"
-WINDOWS_INSTALL_DIR = os.path.join(os.environ.get('LOCALAPPDATA', ''), 'Ollama')
+OLLAMA_LINUX_URL = "https://github.com/ollama/ollama/releases/latest/download/ollama-linux-amd64"
+INSTALL_DIR = os.path.expanduser("~/bin")
 
 def run_command(cmd, shell=False, check=True, capture_output=True):
     """Run a command and return the result"""
@@ -51,130 +52,63 @@ def get_ollama_version():
     except Exception as e:
         return f"Error getting version: {e}"
 
-def install_ollama_linux():
-    """Install Ollama on Linux"""
-    print("Installing Ollama on Linux...")
+def install_ollama_direct():
+    """Install Ollama directly without requiring root privileges"""
+    print("Installing Ollama directly from binary...")
     
-    # Use the official install script
-    cmd = "curl -fsSL https://ollama.com/install.sh | sh"
-    result = run_command(cmd, shell=True)
+    # Create install directory if it doesn't exist
+    os.makedirs(INSTALL_DIR, exist_ok=True)
     
-    if is_ollama_installed():
-        print(f"Ollama installed successfully. Version: {get_ollama_version()}")
-        return True
-    else:
-        print(f"Ollama installation failed. Please check the output.")
-        return False
-
-def start_ollama_service_linux():
-    """Start the Ollama service on Linux"""
-    print("Starting Ollama service...")
-    
-    # Try both systemd and manual service start
+    # Download the Ollama binary
+    print(f"Downloading Ollama from {OLLAMA_LINUX_URL}...")
     try:
-        # First try systemd
-        run_command(["systemctl", "start", "ollama.service"], check=False)
-    except Exception:
-        # Fall back to manual start
-        try:
-            # Start in background and redirect output
-            subprocess.Popen(
-                ["ollama", "serve"], 
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                start_new_session=True
-            )
-            print("Started Ollama service manually")
-        except Exception as e:
-            print(f"Error starting Ollama service: {e}")
-            return False
-    
-    # Wait for service to be ready
-    print("Waiting for Ollama service to be ready...")
-    time.sleep(5)
-    return True
-
-def install_ollama_windows():
-    """Install Ollama on Windows"""
-    print("Installing Ollama on Windows...")
-    
-    # Create temp directory for download
-    temp_dir = tempfile.mkdtemp()
-    zip_path = os.path.join(temp_dir, "ollama.zip")
-    
-    try:
-        # Download the latest Ollama release
-        print(f"Downloading Ollama from {OLLAMA_WINDOWS_URL}...")
-        response = requests.get(OLLAMA_WINDOWS_URL, stream=True)
+        response = requests.get(OLLAMA_LINUX_URL, stream=True)
         response.raise_for_status()
         
-        # Save the zip file
-        with open(zip_path, 'wb') as f:
+        # Save the binary
+        ollama_path = os.path.join(INSTALL_DIR, "ollama")
+        with open(ollama_path, 'wb') as f:
             for chunk in response.iter_content(chunk_size=8192):
                 f.write(chunk)
         
-        # Create install directory if it doesn't exist
-        os.makedirs(WINDOWS_INSTALL_DIR, exist_ok=True)
+        # Make it executable
+        os.chmod(ollama_path, 0o755)
         
-        # Extract the zip file
-        import zipfile
-        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-            zip_ref.extractall(WINDOWS_INSTALL_DIR)
+        # Add to PATH temporarily for this session
+        os.environ['PATH'] = f"{INSTALL_DIR}:{os.environ['PATH']}"
         
-        # Add to PATH if not already there
-        ollama_path = os.path.join(WINDOWS_INSTALL_DIR, 'ollama.exe')
-        if os.path.exists(ollama_path):
-            print(f"Ollama extracted to {WINDOWS_INSTALL_DIR}")
-            
-            # Add to PATH temporarily for this session
-            os.environ['PATH'] = f"{WINDOWS_INSTALL_DIR};{os.environ['PATH']}"
-            
-            # Start the Ollama service
-            start_ollama_service_windows()
+        # Test if it works
+        if is_ollama_installed():
+            print(f"Ollama installed successfully at {ollama_path}")
+            print(f"Version: {get_ollama_version()}")
             return True
         else:
-            print(f"Ollama executable not found after extraction")
+            print("Ollama installation failed. Binary not found in PATH.")
             return False
-            
     except Exception as e:
-        print(f"Error installing Ollama on Windows: {e}")
+        print(f"Error installing Ollama: {e}")
         return False
-    finally:
-        # Clean up temp directory
-        try:
-            shutil.rmtree(temp_dir)
-        except:
-            pass
 
-def start_ollama_service_windows():
-    """Start the Ollama service on Windows"""
+def start_ollama_service():
+    """Start the Ollama service in the background"""
     print("Starting Ollama service...")
     
     try:
-        # Start Ollama service in background
-        ollama_exe = os.path.join(WINDOWS_INSTALL_DIR, 'ollama.exe')
-        
-        # Kill any existing Ollama processes
-        try:
-            run_command(["taskkill", "/F", "/IM", "ollama.exe"], check=False)
-            time.sleep(1)
-        except:
-            pass
-            
-        # Start the service
+        # Start in background and redirect output
         subprocess.Popen(
-            [ollama_exe, "serve"],
-            creationflags=subprocess.CREATE_NEW_PROCESS_GROUP,
+            ["ollama", "serve"], 
             stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL
+            stderr=subprocess.DEVNULL,
+            start_new_session=True
         )
+        print("Started Ollama service in the background")
         
-        # Wait for service to start
+        # Wait for service to be ready
         print("Waiting for Ollama service to be ready...")
-        time.sleep(10)
+        time.sleep(5)
         return True
     except Exception as e:
-        print(f"Error starting Ollama service on Windows: {e}")
+        print(f"Error starting Ollama service: {e}")
         return False
 
 def pull_model(model_name):
@@ -210,25 +144,24 @@ def main():
     print(f"Detected operating system: {system}")
     print(f"Python version: {platform.python_version()}")
     
+    # Only works on Linux
+    if system != "Linux":
+        print("This script is designed for Linux container environments only.")
+        sys.exit(1)
+    
     # Check if Ollama is already installed
     if is_ollama_installed():
         print(f"Ollama is already installed. Version: {get_ollama_version()}")
     else:
-        # Install Ollama based on the operating system
-        if system == "Windows":
-            success = install_ollama_windows()
-        else:  # Linux
-            success = install_ollama_linux()
+        # Install Ollama directly from binary
+        success = install_ollama_direct()
         
         if not success:
             print("Ollama installation failed. Exiting.")
             sys.exit(1)
     
     # Start the Ollama service
-    if system == "Windows":
-        start_ollama_service_windows()
-    else:  # Linux
-        start_ollama_service_linux()
+    start_ollama_service()
     
     # Pull the model
     if pull_model(MODEL_NAME):
@@ -236,6 +169,8 @@ def main():
         if verify_model(MODEL_NAME):
             print(f"\nInstallation complete! You can now use Ollama with the {MODEL_NAME} model.")
             print(f"Example usage: ollama run {MODEL_NAME}")
+            print(f"\nIMPORTANT: To use Ollama in future terminal sessions, add this to your ~/.bashrc:")
+            print(f"export PATH=\"{INSTALL_DIR}:$PATH\"")
         else:
             print("\nModel verification failed. Please check the logs above for errors.")
     else:
