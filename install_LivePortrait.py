@@ -30,43 +30,43 @@ def run(command, cwd=None, shell=False):
     print(f"> Running: {' '.join(command) if isinstance(command, list) else command}")
     result = subprocess.run(command, cwd=cwd, shell=shell)
     if result.returncode != 0:
-        print(f"❌ Command failed: {command}")
+        print(f"Command failed: {command}")
         sys.exit(1)
 
 def clone_repo():
     if os.path.isdir(REPO_NAME):
         if not os.path.exists(os.path.join(REPO_NAME, ".git")):
-            print(f"⚠️ Incomplete repo found, deleting {REPO_NAME} and retrying...")
+            print(f"Incomplete repo found, deleting {REPO_NAME} and retrying...")
             shutil.rmtree(REPO_NAME)
         else:
-            print(f"✅ Repo already cloned: {REPO_NAME}")
+            print(f"Repo already cloned: {REPO_NAME}")
             return
-    print(f"📦 Cloning {REPO_NAME}...")
+    print(f"Cloning {REPO_NAME}...")
     run(["git", "clone", REPO_URL])
 
 def create_conda_env():
-    print(f"🐍 Checking if Conda environment '{CONDA_ENV}' already exists...")
+    print(f"Checking if Conda environment '{CONDA_ENV}' already exists...")
     result = subprocess.run(["conda", "env", "list"], capture_output=True, text=True)
     if CONDA_ENV in result.stdout:
-        print(f"✅ Conda env '{CONDA_ENV}' already exists. Skipping creation.")
+        print(f"Conda env '{CONDA_ENV}' already exists. Skipping creation.")
         return
 
-    print(f"🐍 Creating Conda environment '{CONDA_ENV}' with Python 3.10...")
+    print(f"Creating Conda environment '{CONDA_ENV}' with Python 3.10...")
     run(["conda", "create", "-y", "-n", CONDA_ENV, "python=3.10"])
 
 def verify_env():
-    print(f"🔍 Verifying Conda env '{CONDA_ENV}'...")
+    print(f"Verifying Conda env '{CONDA_ENV}'...")
     run([
         "conda", "run", "-n", CONDA_ENV,
-        "python", "-c", f"import sys; print('✅ Python in {CONDA_ENV}:', sys.executable)"
+        "python", "-c", f"import sys; print('Python in {CONDA_ENV}:', sys.executable)"
     ])
 
 def install_torch():
     step = "install_torch"
     if check_flag(step):
-        print(f"⏩ Skipping {step} (already done)")
+        print(f"Skipping {step} (already done)")
         return
-    print(f"📦 Installing PyTorch into '{CONDA_ENV}' (CUDA 12.4)...")
+    print(f"Installing PyTorch into '{CONDA_ENV}' (CUDA 12.4)...")
     run([
         "conda", "run", "-n", CONDA_ENV,
         "pip", "install", "-v", "torch", "torchvision", "torchaudio",
@@ -77,9 +77,9 @@ def install_torch():
 def install_requirements():
     step = "install_requirements"
     if check_flag(step):
-        print(f"⏩ Skipping {step} (already done)")
+        print(f"Skipping {step} (already done)")
         return
-    print(f"📄 Installing requirements.txt...")
+    print(f"Installing requirements.txt...")
     run([
         "conda", "run", "-n", CONDA_ENV,
         "pip", "install", "-r", "requirements.txt"
@@ -89,9 +89,9 @@ def install_requirements():
 def download_pretrained():
     step = "download_pretrained"
     if check_flag(step):
-        print(f"⏩ Skipping {step} (already done)")
+        print(f"Skipping {step} (already done)")
         return
-    print("🎯 Downloading pretrained weights...")
+    print("Downloading pretrained weights...")
     run([
         "conda", "run", "-n", CONDA_ENV,
         "huggingface-cli", "download", "KwaiVGI/LivePortrait",
@@ -103,10 +103,10 @@ def download_pretrained():
 def install_other_requirements():
     step = "install_other_requirements"
     if check_flag(step):
-        print(f"⏩ Skipping {step} (already done)")
+        print(f"Skipping {step} (already done)")
         return
 
-    print("🔧 Installing other required packages (OpenCV + FFmpeg + Tyro + ONNX + ONNXRuntime)...")
+    print("Installing other required packages (OpenCV + FFmpeg + Tyro + ONNX + ONNXRuntime)...")
 
     run([
         "conda", "run", "-n", CONDA_ENV,
@@ -127,7 +127,7 @@ def run_full_setup():
     install_requirements()
     download_pretrained()
     install_other_requirements()
-    print("✅ Setup complete!")
+    print("Setup complete!")
 
 if __name__ == "__main__":
     run_full_setup()
