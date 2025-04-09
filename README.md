@@ -18,21 +18,25 @@ git clone https://github.com/JasonZhai-9936/DarwinChatbot.git
 cd DarwinChatbot
 
 # 3. Make a new miniconda environment
-conda create -n DarwinChatbot python=3.12
+conda create -n DarwinChatbot python=3.12 -y
 conda activate DarwinChatbot
 
 # 3. Run install_requirements.py to install all models in their own miniconda environments
-python3 install_requirements.py
+python install_requirements.py
 
-# 4. Install remaining dependencies
+# 4. Run the installation script:
+# On Linux:
+  sudo python install_ollama_model.py
+# On Windows (with administrator privileges):
+  ython install_ollama_model.py
+
+
+
+# 5. Install remaining dependencies
 pip install -r requirements.txt
 
 
-<<<<<<< HEAD
 #Additional tips for my partners if running into issues
-=======
-#Additional tips if running into issues
->>>>>>> 4fa721c10edb1576b1df781e65b0a795d2f89dd3
 
 # 1. 
 - run app.py using:
@@ -41,14 +45,10 @@ python app.py
 python3 app.y
 
 
-<<<<<<< HEAD
 # 2. If there's missing libraries, which there almost certainly will be, just conda activate the env and pip install it(and let me know)
 
 # 3. /.install_flags tracks if each separate install component has already been run. 
 #   If you're running into install issues, delete the /.install_flags folder
-=======
-# 2. If there's missing libraries, which there likely may be, just conda activate the env and pip install it
->>>>>>> 4fa721c10edb1576b1df781e65b0a795d2f89dd3
 ```
 
 
@@ -59,7 +59,7 @@ Quickstart
 conda activate DarwinChatbot
 
 # 2. Run app.py
-python app.py
+python ./scripts/app.py
 
 
 
