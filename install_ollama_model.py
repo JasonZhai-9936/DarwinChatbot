@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Ollama and dolphin-mixtral Model Installer Script for container environments
-This version uses the official tarball download without requiring root privileges
+This version correctly handles the tarball structure and directly copies the binary
 """
 
 import os
@@ -56,9 +56,11 @@ def install_ollama_manual():
     """Install Ollama using the official tarball without requiring root privileges"""
     print("Installing Ollama using official tarball...")
     
-    # Create temp directory for download
+    # Create temp directory for download and extraction
     temp_dir = tempfile.mkdtemp()
     tarball_path = os.path.join(temp_dir, "ollama-linux-amd64.tgz")
+    extract_dir = os.path.join(temp_dir, "extract")
+    os.makedirs(extract_dir, exist_ok=True)
     
     try:
         # Download the Ollama tarball
@@ -74,10 +76,41 @@ def install_ollama_manual():
         # Create install directory if it doesn't exist
         os.makedirs(INSTALL_DIR, exist_ok=True)
         
-        # Extract the tarball to the install directory
-        print(f"Extracting Ollama to {INSTALL_DIR}...")
+        # Extract the tarball to the temp directory first
+        print(f"Extracting Ollama to temporary directory...")
         with tarfile.open(tarball_path, 'r:gz') as tar:
-            tar.extractall(path=INSTALL_DIR)
+            # List the contents to debug
+            content_list = tar.getnames()
+            print(f"Tarball contents: {content_list}")
+            
+            # Extract to temp directory
+            tar.extractall(path=extract_dir)
+        
+        # Find the ollama binary in the extracted files
+        ollama_binary = None
+        for root, dirs, files in os.walk(extract_dir):
+            if "ollama" in files:
+                ollama_binary = os.path.join(root, "ollama")
+                break
+        
+        # If we found the binary, copy it to the install directory
+        if ollama_binary:
+            print(f"Found ollama binary at {ollama_binary}")
+            shutil.copy2(ollama_binary, os.path.join(INSTALL_DIR, "ollama"))
+            os.chmod(os.path.join(INSTALL_DIR, "ollama"), 0o755)  # Make executable
+        else:
+            # Try other common patterns
+            if "ollama" in content_list:
+                print("Found ollama at root level")
+                shutil.copy2(os.path.join(extract_dir, "ollama"), os.path.join(INSTALL_DIR, "ollama"))
+                os.chmod(os.path.join(INSTALL_DIR, "ollama"), 0o755)
+            elif "usr/bin/ollama" in content_list:
+                print("Found ollama in usr/bin")
+                shutil.copy2(os.path.join(extract_dir, "usr/bin/ollama"), os.path.join(INSTALL_DIR, "ollama"))
+                os.chmod(os.path.join(INSTALL_DIR, "ollama"), 0o755)
+            else:
+                print(f"Could not find ollama binary in extracted files")
+                return False
         
         # Add to PATH temporarily for this session
         os.environ['PATH'] = f"{INSTALL_DIR}:{os.environ['PATH']}"
@@ -89,6 +122,16 @@ def install_ollama_manual():
             return True
         else:
             print("Ollama installation failed. Binary not found in PATH.")
+            # Let's try to run it directly to see the error
+            binary_path = os.path.join(INSTALL_DIR, "ollama")
+            if os.path.exists(binary_path):
+                print(f"Binary exists at {binary_path}, attempting to run directly...")
+                try:
+                    result = subprocess.run([binary_path, "--version"], text=True, capture_output=True)
+                    print(f"Direct execution result: {result.stdout}")
+                    print(f"Direct execution error: {result.stderr}")
+                except Exception as e:
+                    print(f"Error running binary directly: {e}")
             return False
     except Exception as e:
         print(f"Error installing Ollama: {e}")
@@ -105,9 +148,12 @@ def start_ollama_service():
     print("Starting Ollama service...")
     
     try:
+        # Try running ollama directly from the install path first
+        ollama_path = os.path.join(INSTALL_DIR, "ollama")
+        
         # Start in background and redirect output
         subprocess.Popen(
-            ["ollama", "serve"], 
+            [ollama_path, "serve"], 
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             start_new_session=True
@@ -116,7 +162,7 @@ def start_ollama_service():
         
         # Wait for service to be ready
         print("Waiting for Ollama service to be ready...")
-        time.sleep(5)
+        time.sleep(10)  # Wait longer for service initialization
         return True
     except Exception as e:
         print(f"Error starting Ollama service: {e}")
@@ -125,7 +171,9 @@ def start_ollama_service():
 def pull_model(model_name):
     """Pull the specified model"""
     print(f"Pulling {model_name} model (this may take some time)...")
-    result = run_command(["ollama", "pull", model_name])
+    # Use the direct path for more reliability
+    ollama_path = os.path.join(INSTALL_DIR, "ollama")
+    result = run_command([ollama_path, "pull", model_name])
     
     if result.returncode == 0:
         return True
@@ -136,9 +184,11 @@ def pull_model(model_name):
 def verify_model(model_name):
     """Verify the model was installed correctly"""
     print(f"Verifying {model_name} model installation...")
-    result = run_command(["ollama", "list"])
+    # Use the direct path for more reliability
+    ollama_path = os.path.join(INSTALL_DIR, "ollama")
+    result = run_command([ollama_path, "list"])
     
-    if model_name in result.stdout:
+    if result.returncode == 0 and model_name in result.stdout:
         print(f"Success! The {model_name} model has been installed.")
         print("Model details:")
         for line in result.stdout.splitlines():
@@ -147,6 +197,8 @@ def verify_model(model_name):
         return True
     else:
         print(f"Error: Failed to verify model installation.")
+        if hasattr(result, 'stderr'):
+            print(f"Error output: {result.stderr}")
         return False
 
 def main():
@@ -179,7 +231,7 @@ def main():
         # Verify the model installation
         if verify_model(MODEL_NAME):
             print(f"\nInstallation complete! You can now use Ollama with the {MODEL_NAME} model.")
-            print(f"Example usage: ollama run {MODEL_NAME}")
+            print(f"Example usage: {INSTALL_DIR}/ollama run {MODEL_NAME}")
             print(f"\nIMPORTANT: To use Ollama in future terminal sessions, add this to your ~/.bashrc:")
             print(f"export PATH=\"{INSTALL_DIR}:$PATH\"")
         else:
