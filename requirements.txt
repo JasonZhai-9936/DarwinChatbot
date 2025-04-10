@@ -5,3 +5,5 @@ langchain-core
 langgraph
 requests
 nicegui
+langchain_huggingface
+langchain_ollama
