@@ -1,8 +1,5 @@
 from nicegui import ui
 
-def test_nicegui():
-    ui.label('Hello from NiceGUI!')
-    ui.button('Click me', on_click=lambda: ui.notify('Button clicked!'))
-
-test_nicegui()
-ui.run(port=8080)
+ui.label('Test app running!')
+ui.run(host='0.0.0.0', port=8080, show=False)
+print("\n\nAccess your app at: http://[your-pod-id].runpod.io:8080\n\n")
