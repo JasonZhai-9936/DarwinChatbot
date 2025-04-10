@@ -25,9 +25,6 @@ _shutdown_flag = False
 # === State Flags ===
 awaiting_response = False
 user_prompt = ""  # Store the user's prompt
-# Add a prompt queue with its own lock
-_prompt_queue = []
-_prompt_queue_lock = threading.Lock()
 
 # Expose media folder
 app.add_static_files('/stream', os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'stream')))
@@ -97,38 +94,18 @@ def response_mode():
     
     return success
 
-def check_prompt_queue():
-    """Check if there are any prompts in the queue and process the next one"""
-    global awaiting_response, user_prompt
-    
-    with _prompt_queue_lock:
-        if _prompt_queue:
-            next_prompt = _prompt_queue.pop(0)
-            user_prompt = next_prompt
-            awaiting_response = True
-            print(f"[QUEUE] Processing next prompt: {next_prompt[:50]}...")
-            return True
-    
-    return False
-
 def main_loop():
-    global awaiting_response, user_prompt
+    global awaiting_response
     thread_id = threading.get_ident()
     print(f"[THREAD] Main loop running in thread {thread_id}")
     
     while not _shutdown_flag:
         awaiting_response = False
-        
-        # Check if there are any pending prompts before going to idle mode
-        if not check_prompt_queue():
-            idle_mode()
+        idle_mode()
 
-        # Wait here for response button to be pressed or prompt queue
+        # Wait here for response button to be pressed
         print("[MAIN] Idle finished, waiting for trigger")
         while not awaiting_response and not _shutdown_flag:
-            # Check the prompt queue periodically
-            if check_prompt_queue():
-                break
             time.sleep(1)  # Sleep without printing to reduce log spam
         
         # Check if we got shutdown while waiting
@@ -150,14 +127,10 @@ def main_loop():
     print(f"[THREAD] Thread {thread_id} shutting down")
 
 def trigger_response_with_prompt(prompt):
-    """Add a prompt to the queue for processing"""
-    global _prompt_queue
-    
-    with _prompt_queue_lock:
-        _prompt_queue.append(prompt)
-        
-    print(f"[UI] Response queued by user with prompt: {prompt[:50]}...")
-    ui.notify(f"Prompt submitted! Darwin will respond shortly.", color="positive", timeout=3000)
+    global awaiting_response, user_prompt
+    user_prompt = prompt
+    awaiting_response = True
+    print(f"[UI] Response triggered by user with prompt: {prompt[:50]}...")
 
 def start_main_thread():
     global _main_thread
@@ -170,20 +143,6 @@ def start_main_thread():
         else:
             print(f"[INIT] Main thread already running with ID {_main_thread.ident}")
             return False
-
-def check_system_status():
-    """Return the current system status for UI display"""
-    global awaiting_response, _prompt_queue
-    
-    with _prompt_queue_lock:
-        queue_size = len(_prompt_queue)
-    
-    if awaiting_response:
-        return "Processing response..."
-    elif queue_size > 0:
-        return f"Waiting to process {queue_size} prompt(s)..."
-    else:
-        return "Ready for new prompts"
 
 def shutdown():
     global _shutdown_flag
@@ -246,9 +205,6 @@ def build_ui():
 
         # === RIGHT SIDE PANEL ===
         with ui.column().classes('items-start gap-4'):
-            # Status indicator
-            status_label = ui.label("Ready for new prompts").classes('text-lg font-bold')
-            
             with ui.row().classes('items-center gap-4'):
                 prompt_input = ui.input(label='Your prompt', placeholder='Type something...') \
                               .props('outlined') \
@@ -264,22 +220,6 @@ def build_ui():
                         ui.notify("Please enter a prompt first", color="warning")
                 
                 ui.button('Ask Darwin', on_click=submit_prompt)
-            
-            # Add button to check current status
-            def refresh_status():
-                current_status = check_system_status()
-                status_label.text = current_status
-                ui.notify(f"Status: {current_status}", color="info")
-                
-            ui.button('Refresh Status', on_click=refresh_status).classes('mt-4')
-            
-            # Set up periodic status update (every 5 seconds)
-            def update_status_periodically():
-                current_status = check_system_status()
-                status_label.text = current_status
-                ui.timer(5.0, update_status_periodically)
-                
-            update_status_periodically()
 
 # Build our custom UI
 build_ui()
@@ -289,6 +229,8 @@ if __name__ in {"__main__", "__mp_main__"}:  # Support multiprocessing
     # Start the main thread only if it's not already running
     start_main_thread()
     
-
+    # Make sure json is imported for playlist management
+    import json
+    
     # Start the NiceGUI server
-    ui.run(port=8080, title="Darwin AI Assistant")  # Specify port and title
+    ui.run()
