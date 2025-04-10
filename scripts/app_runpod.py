@@ -291,4 +291,4 @@ if __name__ in {"__main__", "__mp_main__"}:  # Support multiprocessing
     
 
     # Start the NiceGUI server
-    ui.run(port=8080, title="Darwin AI Assistant")  # Specify port and title
+    ui.run(port=6901, title="Darwin AI Assistant")  # Specify port and title
