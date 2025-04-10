@@ -5,6 +5,7 @@ import time
 import os, json
 import glob
 import atexit
+import queue
 from nicegui import ui, app
 
 from LivePortraitIdle import generate_fixed_chunks
@@ -12,6 +13,7 @@ from LatentSync import run_latentsync_inference
 from SparkTTS import run_tts
 from LLM import generate_darwin_response
 from PlaylistManager import idle_playlist_maker, response_playlist_maker, create_lipsync_playlist
+from ui_runpod import build_ui  # Import our improved UI
 
 REPO_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))  
 STREAM_LIVE_DIR = os.path.join(REPO_DIR, "stream", "live")
@@ -22,12 +24,10 @@ _main_thread = None
 _thread_lock = threading.Lock()
 _shutdown_flag = False
 
-# === State Flags ===
+# === State Flags and Message Queue ===
+_state_lock = threading.Lock()
 awaiting_response = False
-user_prompt = ""  # Store the user's prompt
-# Add a prompt queue with its own lock
-_prompt_queue = []
-_prompt_queue_lock = threading.Lock()
+user_prompt_queue = queue.Queue()  # Thread-safe queue for prompts
 
 # Expose media folder
 app.add_static_files('/stream', os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'stream')))
@@ -56,24 +56,29 @@ def await_latentsync_output(timeout=300, poll_interval=2):
 def idle_mode():
     print("[MAIN] Starting idle mode...")
     idle_playlist_maker()
-    #generate_fixed_chunks(mode="talking", chunks_per_video=1, video_limit=1)
+    # Note: generate_fixed_chunks is commented out as we're assuming videos are pre-generated
+    # generate_fixed_chunks(mode="talking", chunks_per_video=1, video_limit=1)
 
     print("[MAIN] Idle mode finished, waiting for response trigger...")
     return
 
 def response_mode():
-    global user_prompt
+    global user_prompt_queue
     print("[MAIN] Starting response mode...")
 
     # Update playlist for response mode
     response_playlist_maker()
     
+    # Get the prompt from the queue
+    try:
+        user_prompt = user_prompt_queue.get(block=False)
+        print(f"[MAIN] Processing prompt: {user_prompt[:50]}...")
+    except queue.Empty:
+        print("[WARNING] No user prompt in queue, using default")
+        user_prompt = "Tell me about your theory of evolution."
+    
     # Step 1: Generate response from the LLM
     print("[LLM] Generating Darwin's response...")
-    if not user_prompt:
-        print("[WARNING] No user prompt provided, using default")
-        user_prompt = "Tell me about your theory of evolution."
-        
     llm_response = generate_darwin_response(user_prompt)
     print(f"[LLM] Response generated: {llm_response[:100]}...")
     
@@ -92,43 +97,25 @@ def response_mode():
         print("[PLAYLIST] Updating playlist with latest generated video")
         create_lipsync_playlist()
     
-    # Reset the user prompt for next interaction
-    user_prompt = ""
-    
     return success
 
-def check_prompt_queue():
-    """Check if there are any prompts in the queue and process the next one"""
-    global awaiting_response, user_prompt
-    
-    with _prompt_queue_lock:
-        if _prompt_queue:
-            next_prompt = _prompt_queue.pop(0)
-            user_prompt = next_prompt
-            awaiting_response = True
-            print(f"[QUEUE] Processing next prompt: {next_prompt[:50]}...")
-            return True
-    
-    return False
-
 def main_loop():
-    global awaiting_response, user_prompt
+    global awaiting_response
     thread_id = threading.get_ident()
     print(f"[THREAD] Main loop running in thread {thread_id}")
     
     while not _shutdown_flag:
-        awaiting_response = False
+        with _state_lock:
+            awaiting_response = False
         
-        # Check if there are any pending prompts before going to idle mode
-        if not check_prompt_queue():
-            idle_mode()
+        idle_mode()
 
-        # Wait here for response button to be pressed or prompt queue
+        # Wait here for response button to be pressed
         print("[MAIN] Idle finished, waiting for trigger")
-        while not awaiting_response and not _shutdown_flag:
-            # Check the prompt queue periodically
-            if check_prompt_queue():
-                break
+        while True:
+            with _state_lock:
+                if awaiting_response or _shutdown_flag:
+                    break
             time.sleep(1)  # Sleep without printing to reduce log spam
         
         # Check if we got shutdown while waiting
@@ -150,14 +137,16 @@ def main_loop():
     print(f"[THREAD] Thread {thread_id} shutting down")
 
 def trigger_response_with_prompt(prompt):
-    """Add a prompt to the queue for processing"""
-    global _prompt_queue
+    global awaiting_response, user_prompt_queue
     
-    with _prompt_queue_lock:
-        _prompt_queue.append(prompt)
-        
-    print(f"[UI] Response queued by user with prompt: {prompt[:50]}...")
-    ui.notify(f"Prompt submitted! Darwin will respond shortly.", color="positive", timeout=3000)
+    # Add the prompt to the queue
+    user_prompt_queue.put(prompt)
+    
+    # Set the flag to trigger response mode
+    with _state_lock:
+        awaiting_response = True
+    
+    print(f"[UI] Response triggered by user with prompt: {prompt[:50]}...")
 
 def start_main_thread():
     global _main_thread
@@ -171,20 +160,6 @@ def start_main_thread():
             print(f"[INIT] Main thread already running with ID {_main_thread.ident}")
             return False
 
-def check_system_status():
-    """Return the current system status for UI display"""
-    global awaiting_response, _prompt_queue
-    
-    with _prompt_queue_lock:
-        queue_size = len(_prompt_queue)
-    
-    if awaiting_response:
-        return "Processing response..."
-    elif queue_size > 0:
-        return f"Waiting to process {queue_size} prompt(s)..."
-    else:
-        return "Ready for new prompts"
-
 def shutdown():
     global _shutdown_flag
     _shutdown_flag = True
@@ -196,99 +171,16 @@ def shutdown():
 # Register shutdown handler
 atexit.register(shutdown)
 
-# Custom UI builder that integrates with our system
-def build_ui():
-    with ui.row().classes('w-full h-screen items-start justify-start gap-8 p-8'):
-        # === VIDEO PLAYER ===
-        with ui.column().classes('items-start'):
-            video = ui.video(src='').props('autoplay muted controls') \
-                .style('max-height: 100vh; aspect-ratio: 2 / 3; width: auto; height: auto; object-fit: cover;') \
-                .classes('rounded-xl shadow-xl')
-
-        playlist = []
-        current_index = 0
-
-        def load_playlist():
-            nonlocal playlist, current_index
-            PLAYLIST_PATH = os.path.join("stream", "playlist", "playlist.json")
-            try:
-                with open(PLAYLIST_PATH, "r") as f:
-                    playlist = json.load(f)
-                    current_index = 0
-                    print(f"[UI] Loaded playlist with {len(playlist)} items")
-            except Exception as e:
-                print(f"[UI] Failed to load playlist: {e}")
-                playlist = []
-
-        def play_current_video():
-            if current_index < len(playlist):
-                PLAYLIST_FOLDER = "/stream"
-                src = os.path.join(PLAYLIST_FOLDER, playlist[current_index])
-                src = src.replace("\\", "/")
-                video.props(f'src={src}?t={time.time()}')
-                print(f"[UI] Playing: {src}")
-            else:
-                print("[UI] No videos to play")
-
-        def play_next_video():
-            nonlocal current_index
-            current_index += 1
-            if current_index < len(playlist):
-                play_current_video()
-            else:
-                print("[UI] Reached end of playlist, reloading")
-                load_playlist()
-                play_current_video()
-
-        video.on("ended", lambda _: play_next_video())
-        load_playlist()
-        play_current_video()
-
-        # === RIGHT SIDE PANEL ===
-        with ui.column().classes('items-start gap-4'):
-            # Status indicator
-            status_label = ui.label("Ready for new prompts").classes('text-lg font-bold')
-            
-            with ui.row().classes('items-center gap-4'):
-                prompt_input = ui.input(label='Your prompt', placeholder='Type something...') \
-                              .props('outlined') \
-                              .classes('w-96')
-                
-                # Handle the user's prompt submission
-                def submit_prompt():
-                    user_text = prompt_input.value
-                    if user_text and user_text.strip():
-                        trigger_response_with_prompt(user_text)
-                        prompt_input.value = ""  # Clear input after submission
-                    else:
-                        ui.notify("Please enter a prompt first", color="warning")
-                
-                ui.button('Ask Darwin', on_click=submit_prompt)
-            
-            # Add button to check current status
-            def refresh_status():
-                current_status = check_system_status()
-                status_label.text = current_status
-                ui.notify(f"Status: {current_status}", color="info")
-                
-            ui.button('Refresh Status', on_click=refresh_status).classes('mt-4')
-            
-            # Set up periodic status update (every 5 seconds)
-            def update_status_periodically():
-                current_status = check_system_status()
-                status_label.text = current_status
-                ui.timer(5.0, update_status_periodically)
-                
-            update_status_periodically()
-
-# Build our custom UI
-build_ui()
+# Build our custom UI with the callback function
+build_ui(trigger_response_with_prompt)
 
 # Only run this block when the file is executed directly
 if __name__ in {"__main__", "__mp_main__"}:  # Support multiprocessing
     # Start the main thread only if it's not already running
     start_main_thread()
     
-
+    # Make sure json is imported for playlist management
+    import json
+    
     # Start the NiceGUI server
-    ui.run(port=6901, title="Darwin AI Assistant")  # Specify port and title
+    ui.run()
