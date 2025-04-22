@@ -1,3 +1,0 @@
-file 'C:\Users\Jason\DarwinChatbot\outputs\generate_starter_chunks\starter_chunk1.ts'
-file 'C:\Users\Jason\DarwinChatbot\outputs\generate_starter_chunks\starter_chunk2.ts'
-file 'C:\Users\Jason\DarwinChatbot\outputs\generate_starter_chunks\starter_chunk3.ts'

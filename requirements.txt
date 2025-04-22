@@ -1,5 +1,4 @@
-#these are installs for the base py shell, not any of the venvs
-langchain
+#these are installs for the base DarwinChatbot venv
 langchain-community
 langchain-core
 langgraph
@@ -7,3 +6,5 @@ requests
 nicegui
 langchain_huggingface
 langchain_ollama
+ollama
+faiss-cpu

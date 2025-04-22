@@ -1,5 +1,0 @@
-=== STREAM TEST (REPEAT MODE) START ===
-[INIT] starter1.ts inserted (to be deleted early)
-[REPEAT] starter2.ts inserted
-[REPEAT] starter3.ts inserted
-[REPEAT] starter4.ts inserted
