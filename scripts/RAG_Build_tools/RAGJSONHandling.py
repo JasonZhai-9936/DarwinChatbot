@@ -1,4 +1,4 @@
-#chunk nad overflow newly downloaded json
+#chunk and overflow newly downloaded json
 import json
 import re
 from sentence_transformers import SentenceTransformer, util

@@ -305,4 +305,4 @@ if __name__ == "__main__":
     count_darwin_links()
     # Process Darwin's related pages
     print("\nProcessing Darwin's related pages...")
-    #process_darwin_related_pages(max_pages=4)  # Limit to 10 pages for demonstration
+    #process_darwin_related_pages(max_pages=4)  

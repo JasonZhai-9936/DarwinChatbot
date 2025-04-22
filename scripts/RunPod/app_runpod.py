@@ -1,4 +1,4 @@
-# app.py
+# app_runpod.py
 
 import threading
 import time
@@ -13,7 +13,7 @@ from LatentSync import run_latentsync_inference
 from SparkTTS import run_tts
 from LLM import generate_darwin_response
 from PlaylistManager import idle_playlist_maker, response_playlist_maker, create_lipsync_playlist
-from ui_runpod import build_ui  # Import our improved UI
+from Unused.ui_runpod import build_ui  # Import our improved UI
 
 REPO_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))  
 STREAM_LIVE_DIR = os.path.join(REPO_DIR, "stream", "live")
@@ -171,7 +171,7 @@ def shutdown():
 # Register shutdown handler
 atexit.register(shutdown)
 
-# Build our custom UI with the callback function
+
 build_ui(trigger_response_with_prompt)
 
 # Only run this block when the file is executed directly
