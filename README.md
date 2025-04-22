@@ -11,7 +11,7 @@ Requirements
 Installation Guide
 
 1. Make sure your system has Git, [conda](https://www.anaconda.com/docs/getting-started/miniconda/install), and FFmpeg installed ([HOW TO INSTALL FFMPEG](FFMPEGInstall.md))
-**answer yes to "Do you wish to update your shell profile to automatically initialize conda?"
+
 
 ```bash
 # 2. Clone the code and prepare the environment 
