@@ -8,7 +8,9 @@ INSTALL_LIST = [
     "install_LivePortrait.py",
     "install_ollama_model.py",
     "install_sparktts.py",
-    "install_latentsync.py"
+    "install_latentsync.py",
+    "move_assets.py"
+    
 ]
 
 def run_installers():
