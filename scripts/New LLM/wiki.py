@@ -258,11 +258,50 @@ def getDarwinMain():
         file_size = os.path.getsize(output_file) / 1024  # Convert to KB
         print(f"File size: {file_size:.2f} KB")
 
+def count_darwin_links():
+    """
+    Count the total number of links on Charles Darwin's Wikipedia page.
+    
+    Returns:
+        int: The total number of links (excluding special pages like File:, Category:, Template:)
+        int: The total number of all links including special pages
+    """
+    try:
+        # Initialize the MediaWiki API client
+        wiki = mediawikiapi.MediaWikiAPI()
+        
+        # Get Darwin's page
+        darwin_page = wiki.page("Charles Darwin")
+        
+        # Get all links from the page
+        all_links = darwin_page.links
+        
+        # Count all links
+        total_all_links = len(all_links)
+        
+        # Filter out non-Wikipedia links and special pages
+        wiki_links = [link for link in all_links 
+                    if not link.startswith("File:") 
+                    and not link.startswith("Category:") 
+                    and not link.startswith("Template:")]
+        
+        # Count regular Wikipedia links
+        total_wiki_links = len(wiki_links)
+        
+        print(f"Total Wikipedia links (excluding special pages): {total_wiki_links}")
+        print(f"Total links (including special pages): {total_all_links}")
+        
+        return total_wiki_links, total_all_links
+        
+    except Exception as e:
+        print(f"Error counting Darwin's links: {e}")
+        return 0, 0
+    
 if __name__ == "__main__":
     # Process Darwin's main page
     # print("Processing Darwin's main page...")
     # getDarwinMain()
-    
+    count_darwin_links()
     # Process Darwin's related pages
     print("\nProcessing Darwin's related pages...")
-    process_darwin_related_pages(max_pages=4)  # Limit to 10 pages for demonstration
+    #process_darwin_related_pages(max_pages=4)  # Limit to 10 pages for demonstration
