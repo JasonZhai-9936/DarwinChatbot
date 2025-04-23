@@ -10,12 +10,14 @@ from nicegui import ui, app
 from LivePortraitIdle import generate_fixed_chunks
 from LatentSync import run_latentsync_inference
 from SparkTTS import run_tts
-from LLM import generate_darwin_response
+from Dual_LLM import generate_darwin_response
 from PlaylistManager import idle_playlist_maker, response_playlist_maker, create_lipsync_playlist
+from ui import build_ui  # Import build_ui from the ui.py file
 
 REPO_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))  
 STREAM_LIVE_DIR = os.path.join(REPO_DIR, "stream", "live")
 STREAM_SPEECH_DIR = os.path.join(REPO_DIR, "stream", "speech")
+PLAYLIST_PATH = os.path.join("stream", "playlist", "playlist.json")
 
 # === Thread management ===
 _main_thread = None
@@ -29,26 +31,39 @@ user_prompt = ""  # Store the user's prompt
 # Expose media folder
 app.add_static_files('/stream', os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'stream')))
 
-def await_latentsync_output(timeout=300, poll_interval=2):
-    print(f"[WAIT] Watching {STREAM_LIVE_DIR} for new video...")
+def get_latest_video_from_live_dir():
+    """Get the most recent video from the live directory"""
+    video_files = glob.glob(os.path.join(STREAM_LIVE_DIR, "*.mp4"))
+    if not video_files:
+        return None
+    return max(video_files, key=os.path.getctime)
 
-    # Step 1: Get initial list of .mp4 files
-    existing_files = set(glob.glob(os.path.join(STREAM_LIVE_DIR, "*.mp4")))
-    start_time = time.time()
-
-    while time.time() - start_time < timeout and not _shutdown_flag:
-        current_files = set(glob.glob(os.path.join(STREAM_LIVE_DIR, "*.mp4")))
-        new_files = current_files - existing_files
-
-        if new_files:
-            new_file = list(new_files)[0]
-            print(f"[FOUND] New video detected: {new_file}")
-            return new_file
-
-        time.sleep(poll_interval)
-
-    print(f"[TIMEOUT] No new video found in {STREAM_LIVE_DIR} within {timeout} seconds.")
-    return None
+def update_playlist_with_single_video(video_path):
+    """Create a playlist with just the specified video"""
+    # Convert absolute path to relative path for playlist
+    try:
+        # Get the path relative to the REPO_DIR
+        relative_path = os.path.relpath(video_path, os.path.join(REPO_DIR))
+        
+        # Important fix: Remove any "stream" prefix to avoid path duplication
+        if relative_path.startswith("stream\\") or relative_path.startswith("stream/"):
+            relative_path = relative_path[7:]  # Skip past "stream/" or "stream\"
+        
+        # Convert backslashes to forward slashes for web paths
+        web_path = relative_path.replace("\\", "/")
+        
+        # Create a playlist with just this video
+        playlist = [web_path]
+        
+        # Save the playlist
+        with open(PLAYLIST_PATH, "w") as f:
+            json.dump(playlist, f)
+        
+        print(f"[PLAYLIST] Updated playlist with single video: {web_path}")
+        return True
+    except Exception as e:
+        print(f"[ERROR] Failed to update playlist: {e}")
+        return False
 
 def idle_mode():
     print("[MAIN] Starting idle mode...")
@@ -61,9 +76,6 @@ def idle_mode():
 def response_mode():
     global user_prompt
     print("[MAIN] Starting response mode...")
-
-    # Update playlist for response mode
-    response_playlist_maker()
     
     # Step 1: Generate response from the LLM
     print("[LLM] Generating Darwin's response...")
@@ -84,10 +96,17 @@ def response_mode():
     success = run_latentsync_inference()
     print(f"[SYNC] Lip sync completed with status: {success}")
     
-    # Step 4: Update playlist with the latest generated video if successful
+    # Step 4: If successful, get the latest video and make it the only item in the playlist
     if success:
-        print("[PLAYLIST] Updating playlist with latest generated video")
-        create_lipsync_playlist()
+        # Get the latest video from the LIVE_DIR
+        latest_video = get_latest_video_from_live_dir()
+        if latest_video:
+            print(f"[PLAYBACK] Found latest video: {latest_video}")
+            # Update playlist to only include this video, forcing playback
+            update_playlist_with_single_video(latest_video)
+            # The updated UI will automatically detect playlist changes and play the video
+        else:
+            print("[ERROR] No video found in live directory after sync completion")
     
     # Reset the user prompt for next interaction
     user_prompt = ""
@@ -115,14 +134,14 @@ def main_loop():
         print("[MAIN] Response triggered, starting response processing")
         response_mode()
         
-        # After response mode, watch for new video
-        print("[MAIN] Response mode completed, watching for new video")
-        new_video = await_latentsync_output()
+        # Add a delay to ensure the video has time to play (the response video)
+        time.sleep(10)
         
-        if new_video:
-            print(f"[MAIN] Processing complete with video: {new_video}")
-        else:
-            print("[MAIN] Processing complete but no new video detected")
+        # After showing the response video, update the playlist to include other videos too
+        print("[MAIN] Updating playlist with additional videos")
+        create_lipsync_playlist()
+        
+        print("[MAIN] Response mode completed, ready for next interaction")
     
     print(f"[THREAD] Thread {thread_id} shutting down")
 
@@ -155,82 +174,13 @@ def shutdown():
 # Register shutdown handler
 atexit.register(shutdown)
 
-# Custom UI builder that integrates with our system
-def build_ui():
-    with ui.row().classes('w-full h-screen items-start justify-start gap-8 p-8'):
-        # === VIDEO PLAYER ===
-        with ui.column().classes('items-start'):
-            video = ui.video(src='').props('autoplay muted controls') \
-                .style('max-height: 100vh; aspect-ratio: 2 / 3; width: auto; height: auto; object-fit: cover;') \
-                .classes('rounded-xl shadow-xl')
-
-        playlist = []
-        current_index = 0
-
-        def load_playlist():
-            nonlocal playlist, current_index
-            PLAYLIST_PATH = os.path.join("stream", "playlist", "playlist.json")
-            try:
-                with open(PLAYLIST_PATH, "r") as f:
-                    playlist = json.load(f)
-                    current_index = 0
-                    print(f"[UI] Loaded playlist with {len(playlist)} items")
-            except Exception as e:
-                print(f"[UI] Failed to load playlist: {e}")
-                playlist = []
-
-        def play_current_video():
-            if current_index < len(playlist):
-                PLAYLIST_FOLDER = "/stream"
-                src = os.path.join(PLAYLIST_FOLDER, playlist[current_index])
-                src = src.replace("\\", "/")
-                video.props(f'src={src}?t={time.time()}')
-                print(f"[UI] Playing: {src}")
-            else:
-                print("[UI] No videos to play")
-
-        def play_next_video():
-            nonlocal current_index
-            current_index += 1
-            if current_index < len(playlist):
-                play_current_video()
-            else:
-                print("[UI] Reached end of playlist, reloading")
-                load_playlist()
-                play_current_video()
-
-        video.on("ended", lambda _: play_next_video())
-        load_playlist()
-        play_current_video()
-
-        # === RIGHT SIDE PANEL ===
-        with ui.column().classes('items-start gap-4'):
-            with ui.row().classes('items-center gap-4'):
-                prompt_input = ui.input(label='Your prompt', placeholder='Type something...') \
-                              .props('outlined') \
-                              .classes('w-96')
-                
-                # Handle the user's prompt submission
-                def submit_prompt():
-                    user_text = prompt_input.value
-                    if user_text and user_text.strip():
-                        trigger_response_with_prompt(user_text)
-                        prompt_input.value = ""  # Clear input after submission
-                    else:
-                        ui.notify("Please enter a prompt first", color="warning")
-                
-                ui.button('Ask Darwin', on_click=submit_prompt)
-
-# Build our custom UI
-build_ui()
-
 # Only run this block when the file is executed directly
 if __name__ in {"__main__", "__mp_main__"}:  # Support multiprocessing
-    # Start the main thread only if it's not already running
-    start_main_thread()
+    # Build the UI with our response callback
+    build_ui(trigger_response_callback=trigger_response_with_prompt)
     
-    # Make sure json is imported for playlist management
-    import json
+    # Start the main thread
+    start_main_thread()
     
     # Start the NiceGUI server
     ui.run()
