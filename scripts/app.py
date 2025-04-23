@@ -84,7 +84,7 @@ def response_mode():
         user_prompt = "Tell me about your theory of evolution."
         
     llm_response = generate_darwin_response(user_prompt)
-    print(f"[LLM] Response generated: {llm_response[:100]}...")
+    print(f"[LLM] Response generated: {llm_response[:500]}...")
     
     # Step 2: Convert response to speech using TTS
     print("[TTS] Converting text to speech...")
