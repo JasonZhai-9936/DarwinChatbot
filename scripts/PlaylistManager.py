@@ -56,10 +56,11 @@ def idle_playlist_maker():
     files = [f for f in os.listdir(source_dir) if is_supported_file(f)]
     if files:
         # Select 7 random files
-        selected_files = random.sample(files, 7)  # Grab 7 random files
-        # Adjust path to use the new structure
+        selected_files = random.sample(files, min(7, len(files)))  # Grab up to 7 random files
+        # Add full paths relative to the stream directory
         for selected in selected_files:
-            playlist.append(os.path.join("chunks", "img2vid_chunks", selected))
+            # Fix: No "stream/" prefix in playlist paths
+            playlist.append(os.path.join("chunks", "img2vid_chunks", selected).replace("\\", "/"))
 
     with open(PLAYLIST_PATH, "w") as f:
         json.dump(playlist, f)
@@ -85,10 +86,10 @@ def response_playlist_maker():
     files = [f for f in os.listdir(source_dir) if is_supported_file(f)]
     if files:
         # Select 7 random files
-        selected_files = random.sample(files, 7)  # Grab 7 random files
-        # Adjust path to use the new structure
+        selected_files = random.sample(files, min(7, len(files)))  # Grab up to 7 random files
+        # Fix: No "stream/" prefix in playlist paths
         for selected in selected_files:
-            playlist.append(os.path.join("chunks", "img2vid_chunks", selected))
+            playlist.append(os.path.join("chunks", "img2vid_chunks", selected).replace("\\", "/"))
 
     with open(PLAYLIST_PATH, "w") as f:
         json.dump(playlist, f)
@@ -102,7 +103,6 @@ def create_lipsync_playlist():
     """
     ensure_directories_exist()
     playlist = []
-    source_keys = list(RESPONSE_SOURCES.keys())
     
     # Find the most recent video in the live directory
     video_files = []
@@ -113,17 +113,29 @@ def create_lipsync_playlist():
         # Get the most recent video file
         latest_video = max(video_files, key=os.path.getctime)
         latest_video_name = os.path.basename(latest_video)
-        # Add this as the first item in the playlist
-        playlist.append(os.path.join("live", latest_video_name))
+        # Fix: Add this as the first item in the playlist without "stream/" prefix
+        playlist.append(os.path.join("live", latest_video_name).replace("\\", "/"))
         print(f"[PLAYLIST] Added latest video to playlist: {latest_video_name}")
     
-    # Add 6 more random videos from img2vid_chunks
+    # Add more random videos from img2vid_chunks
     source_key = "img2vid"
     source_dir = RESPONSE_SOURCES[source_key]
         
     # Skip if directory doesn't exist or is empty
-    if not os.path.exists(source_dir):
-        print(f"[ERROR] Directory {source_dir} does not exist or is empty.")
-        return
-
-    # Find all supported files (
+    if os.path.exists(source_dir):
+        # Find all supported files (mp4 and gif)
+        files = [f for f in os.listdir(source_dir) if is_supported_file(f)]
+        if files:
+            # Select up to 6 random files
+            num_files = min(6, len(files))
+            selected_files = random.sample(files, num_files)
+            # Fix: Add paths without "stream/" prefix
+            for selected in selected_files:
+                playlist.append(os.path.join("chunks", "img2vid_chunks", selected).replace("\\", "/"))
+    
+    # Write the updated playlist
+    with open(PLAYLIST_PATH, "w") as f:
+        json.dump(playlist, f)
+    
+    print(f"[PLAYLIST] Lipsync playlist created with {len(playlist)} items")
+    return playlist

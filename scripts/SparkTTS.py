@@ -54,8 +54,8 @@ def run_tts(
     text: str,
     device: str = "0",
     model_dir: str = "pretrained_models/Spark-TTS-0.5B",
-    prompt_text: str = "Antartic Minke Whales. Their pointed heads and short dorsal fins give them speed and endurance.",
-    prompt_speech_path: str = "example/DavidA.mp3"
+    prompt_text: str = "Their pointed heads and short dorsal fins.",
+    prompt_speech_path: str = "example/DavidA2.mp3"
 ) -> str:
     """
     Run Spark-TTS inference and return the path to the generated audio file.
@@ -136,7 +136,7 @@ def main():
     parser.add_argument("--prompt_text", 
                        default="Antartic Minke Whales. Their pointed heads and short dorsal fins give them speed and endurance.",
                        help="Prompt text for the TTS model")
-    parser.add_argument("--prompt_speech_path", default="example/DavidA.mp3",
+    parser.add_argument("--prompt_speech_path", default="example/DavidA2.mp3",
                        help="Path to the prompt speech file")
     
     args = parser.parse_args()
