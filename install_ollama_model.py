@@ -18,7 +18,7 @@ from pathlib import Path
 # Constants
 MODEL_NAME = "dolphin-mixtral"
 OLLAMA_LINUX_URL = "https://ollama.com/download/ollama-linux-amd64.tgz"
-INSTALL_DIR = os.path.expanduser("~/bin")
+INSTALL_DIR = "/data/DarwinChatbot"
 
 def run_command(cmd, shell=False, check=True, capture_output=True):
     """Run a command and return the result"""
