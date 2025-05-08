@@ -6,13 +6,16 @@ import os, json
 import glob
 import atexit
 from nicegui import ui, app
+import random
 
-from LivePortraitIdle import generate_fixed_chunks
-from LatentSync import run_latentsync_inference
-from SparkTTS import run_tts
-from Dual_LLM import generate_darwin_response
-from PlaylistManager import idle_playlist_maker, response_playlist_maker, create_lipsync_playlist
-from ui import build_ui  
+# Comment out imports for removed functionality
+# from LivePortraitIdle import generate_fixed_chunks
+# from LatentSync import run_latentsync_inference
+# from SparkTTS import run_tts
+# from Dual_LLM import generate_darwin_response
+from PlaylistManagerTest import idle_playlist_maker, response_playlist_maker, create_lipsync_playlist
+from BackgroundManager import initialize_background_player, create_background_playlist
+from uiTest import build_ui  # Import build_ui from the ui.py file
 
 REPO_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))  
 STREAM_LIVE_DIR = os.path.join(REPO_DIR, "stream", "live")
@@ -67,8 +70,8 @@ def update_playlist_with_single_video(video_path):
 
 def idle_mode():
     print("[MAIN] Starting idle mode...")
+    # Generate a new playlist based on node transitions
     idle_playlist_maker()
-    #generate_fixed_chunks(mode="talking", chunks_per_video=1, video_limit=1)
 
     print("[MAIN] Idle mode finished, waiting for response trigger...")
     return
@@ -77,36 +80,17 @@ def response_mode():
     global user_prompt
     print("[MAIN] Starting response mode...")
     
-    # Step 1: Generate response from the LLM
-    print("[LLM] Generating Darwin's response...")
-    if not user_prompt:
-        print("[WARNING] No user prompt provided, using default")
-        user_prompt = "Tell me about your theory of evolution."
-        
-    llm_response = generate_darwin_response(user_prompt)
-    print(f"[LLM] Response generated: {llm_response[:500]}...")
+    # MODIFIED: Test version - just show the prompt and generate a new playlist
+    print(f"[TEST] User prompt received: {user_prompt[:50]}...")
+    print("[TEST] In a real scenario, we would generate LLM response and audio here")
     
-    # Step 2: Convert response to speech using TTS
-    print("[TTS] Converting text to speech...")
-    speech_file = run_tts(text=llm_response)
-    print(f"[TTS] Speech generated: {speech_file}")
+    # Generate a response playlist
+    response_playlist_maker()
     
-    # Step 3: Generate lip-synced video
-    print("[SYNC] Running lip sync...")
-    success = run_latentsync_inference()
-    print(f"[SYNC] Lip sync completed with status: {success}")
+    # Update background playlist during response (smaller number of clips for circular display)
+    create_background_playlist(num_clips=3)
     
-    # Step 4: If successful, get the latest video and make it the only item in the playlist
-    if success:
-        # Get the latest video from the LIVE_DIR
-        latest_video = get_latest_video_from_live_dir()
-        if latest_video:
-            print(f"[PLAYBACK] Found latest video: {latest_video}")
-            # Update playlist to only include this video, forcing playback
-            update_playlist_with_single_video(latest_video)
-            # The updated UI will automatically detect playlist changes and play the video
-        else:
-            print("[ERROR] No video found in live directory after sync completion")
+    success = True
     
     # Reset the user prompt for next interaction
     user_prompt = ""
@@ -117,6 +101,12 @@ def main_loop():
     global awaiting_response
     thread_id = threading.get_ident()
     print(f"[THREAD] Main loop running in thread {thread_id}")
+    
+    # Start with an initial idle playlist
+    idle_playlist_maker()
+    
+    # Initialize the background video player with a delay
+    initialize_background_player()
     
     while not _shutdown_flag:
         awaiting_response = False
@@ -134,12 +124,16 @@ def main_loop():
         print("[MAIN] Response triggered, starting response processing")
         response_mode()
         
-        # Add a delay to ensure the video has time to play (the response video)
+        # Add a delay to ensure the video has time to play
         time.sleep(10)
         
-        # After showing the response video, update the playlist to include other videos too
+        # After response, create a new playlist for continued interaction
         print("[MAIN] Updating playlist with additional videos")
         create_lipsync_playlist()
+        
+        # Also refresh the background playlist occasionally
+        if random.random() < 0.3:  # 30% chance to update background
+            create_background_playlist(num_clips=3)
         
         print("[MAIN] Response mode completed, ready for next interaction")
     
