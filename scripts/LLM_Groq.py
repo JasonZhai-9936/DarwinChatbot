@@ -1,0 +1,274 @@
+from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_community.vectorstores import FAISS
+from langchain_core.messages import SystemMessage, HumanMessage
+from langchain_groq import ChatGroq
+from langchain_core.tools import Tool
+from langchain.agents import initialize_agent, AgentType
+import os
+import pathlib
+from textwrap import fill
+from colorama import Fore, Style, init
+
+# Initialize colorama for colored terminal output
+init(autoreset=True)
+
+# Ensure GROQ key is set for dev
+os.environ["GROQ_API_KEY"] = "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"
+
+# Basic short-term memory
+conversation_history = [
+    {"role": "system", "content": (
+        "You are Charles Darwin, the 19th-century naturalist. Respond in the first person using Victorian-era language. "
+        "You are aware of the original Darwin's death but understand you exist in the modern world. "
+        "Respond concisely."
+    )}
+]
+
+class VectorSearch:
+    def __init__(self, index_path):
+        self.embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-mpnet-base-v2")
+        self.db = FAISS.load_local(index_path, self.embeddings, allow_dangerous_deserialization=True)
+
+    def search(self, keyword):
+        if not keyword:
+            return []
+        return self.db.similarity_search(keyword, k=5)
+
+class MultiRAGQueryAgent:
+    def __init__(self):
+        self.llm = ChatGroq(model_name="llama3-70b-8192", api_key=os.getenv("GROQ_API_KEY"))
+
+        base_dir = str(pathlib.Path(__file__).resolve().parent.parent)
+
+        self.general_darwin_search = VectorSearch(index_path=os.path.join(base_dir, "faiss_index_file", "wiki"))
+        self.writings_darwin_search = VectorSearch(index_path=os.path.join(base_dir, "faiss_index_file", "Darwin"))
+
+        self.general_darwin_tool = Tool(
+            name="General Darwin Knowledge Search",
+            func=self.general_darwin_search.search,
+            description="Use this tool to retrieve general information about Charles Darwin's life and work."
+        )
+
+        self.writings_darwin_tool = Tool(
+            name="Darwin Writings Search",
+            func=self.writings_darwin_search.search,
+            description="Use this tool to retrieve specific information from Darwin's writings and personal letters."
+        )
+
+        self.agent = initialize_agent(
+            tools=[self.general_darwin_tool, self.writings_darwin_tool],
+            llm=self.llm,
+            agent=AgentType.ZERO_SHOT_REACT_DESCRIPTION,
+            verbose=True
+        )
+
+    def classify_query_type(self, user_input):
+        prompt = [
+            SystemMessage(content=(
+                "Classify the following query into ONE of these three categories and ONLY return the corresponding number (1, 2, or 3):\n"
+                "1. Generic question not related to Darwin at all (general knowledge, unrelated topics)\n"
+                "2. Specific question about Darwin's life/work (biography, theories, general writings)\n"
+                "3. Specific question about a specific page # or chapter in a specific book or letter by Darwin\n"
+                "\nIdentify mentions of specific books, page numbers, or chapters in category 3. Return ONLY the number."
+            )),
+            HumanMessage(content=user_input)
+        ]
+        response = self.llm.invoke(prompt).content.strip()
+        for char in response:
+            if char in ['1', '2', '3']:
+                return int(char)
+        return 2
+
+    def extract_general_darwin_keywords(self, user_input):
+        prompt = [
+            SystemMessage(content=(
+                "For the following query directed at Charles Darwin, return ONLY a list of 2-5 relevant keywords or phrases "
+                "that would be effective for retrieving information from a Darwin knowledge base.\n"
+                "IMPORTANT: If the query uses second-person pronouns ('you', 'your'), convert them to 'Darwin' or 'Charles Darwin'.\n"
+                "Return as a comma-separated list. If none, return 'NONE'."
+            )),
+            HumanMessage(content=user_input)
+        ]
+        response = self.llm.invoke(prompt).content.strip()
+        return None if response.upper() == "NONE" else response
+
+    def extract_specific_writing_references(self, user_input):
+        prompt = [
+            SystemMessage(content=(
+                "For the following query about Darwin's writings, extract ONLY these specific elements:\n"
+                "1. Book or letter title\n2. Page number(s)\n3. Chapter references\n"
+                "Return in format: 'TITLE: [title], PAGE: [page], CHAPTER: [chapter]'"
+            )),
+            HumanMessage(content=user_input)
+        ]
+        response = self.llm.invoke(prompt).content.strip()
+        return response
+
+    def format_document(self, doc, index, doc_type):
+        """Format a single document with nice borders and styling"""
+        width = 80
+        separator = "─" * width
+        
+        # Extract metadata
+        source = getattr(doc.metadata, 'source', 'Unknown') if hasattr(doc, 'metadata') else 'Unknown'
+        page = getattr(doc.metadata, 'page', 'N/A') if hasattr(doc, 'metadata') else 'N/A'
+        
+        # Format content with wrapping
+        content = doc.page_content
+        wrapped_content = fill(content, width=width-4)
+        indented_content = "\n".join(f"│  {line}  │" for line in wrapped_content.split("\n"))
+        
+        # Build the formatted document
+        header = f"┌{'─' * (width-2)}┐"
+        footer = f"└{'─' * (width-2)}┘"
+        title = f"│ {Fore.CYAN}Document #{index+1} ({doc_type}){Style.RESET_ALL}"
+        title = f"{title}{' ' * (width-len(title)-1)}│"
+        meta = f"│ {Fore.YELLOW}Source:{Style.RESET_ALL} {source}, {Fore.YELLOW}Page:{Style.RESET_ALL} {page}"
+        meta = f"{meta}{' ' * (width-len(meta)-1)}│"
+        divider = f"├{'─' * (width-2)}┤"
+        
+        formatted_doc = f"{header}\n{title}\n{meta}\n{divider}\n{indented_content}\n{footer}"
+        return formatted_doc
+
+    def handle_query(self, user_input):
+        query_type = self.classify_query_type(user_input)
+        print(f"{Fore.MAGENTA}[RAG] Query classified as type: {query_type}{Style.RESET_ALL}")
+
+        if query_type == 1:
+            print(f"{Fore.MAGENTA}[RAG] Generic question - No RAG retrieval needed{Style.RESET_ALL}")
+            return None
+
+        elif query_type == 2:
+            print(f"{Fore.MAGENTA}[RAG] Darwin-specific question - Extracting keywords{Style.RESET_ALL}")
+            keywords = self.extract_general_darwin_keywords(user_input)
+            if keywords:
+                print(f"{Fore.MAGENTA}[RAG] Keywords extracted: {keywords}{Style.RESET_ALL}")
+                limited_keywords = [kw.strip() for kw in keywords.split(',')][:3]
+                all_results = []
+                for kw in limited_keywords:
+                    print(f"{Fore.MAGENTA}[RAG] Searching FAISS for keyword: {kw}{Style.RESET_ALL}")
+                    results = self.general_darwin_search.search(kw)
+                    all_results.extend(results)
+                if all_results:
+                    unique_contents = []
+                    seen = set()
+                    formatted_docs = []
+                    for i, doc in enumerate(all_results):
+                        if doc.page_content not in seen:
+                            seen.add(doc.page_content)
+                            unique_contents.append(doc.page_content)
+                            formatted_docs.append(self.format_document(doc, i, "General Darwin Info"))
+                    
+                    header = f"\n{Fore.GREEN}╔═{'═' * 80}═╗"
+                    title = f"{Fore.GREEN}║ {'RETRIEVED GENERAL DARWIN INFORMATION':^83} ║{Style.RESET_ALL}"
+                    footer = f"{Fore.GREEN}╚═{'═' * 80}═╝{Style.RESET_ALL}"
+                    formatted_output = f"{header}\n{title}\n{footer}\n\n" + "\n\n".join(formatted_docs)
+                    
+                    # Store original content for the LLM
+                    llm_content = "\nRetrieved General Darwin Information:\n" + "\n".join(unique_contents)
+                    
+                    # Print formatted output to console
+                    print(formatted_output)
+                    
+                    # Return content for LLM
+                    return llm_content
+                else:
+                    print(f"{Fore.RED}[RAG] No relevant documents found{Style.RESET_ALL}")
+                    return None
+            print(f"{Fore.RED}[RAG] No keywords extracted{Style.RESET_ALL}")
+            return None
+
+        elif query_type == 3:
+            print(f"{Fore.MAGENTA}[RAG] Writing-specific question - Extracting references{Style.RESET_ALL}")
+            reference_details = self.extract_specific_writing_references(user_input)
+            print(f"{Fore.MAGENTA}[RAG] Reference details: {reference_details}{Style.RESET_ALL}")
+            general_keywords = self.extract_general_darwin_keywords(user_input)
+            combined_query = f"{reference_details} {general_keywords if general_keywords else ''}"
+            results = self.writings_darwin_search.search(combined_query)
+            if results:
+                formatted_docs = []
+                llm_contents = []
+                
+                for i, doc in enumerate(results):
+                    formatted_docs.append(self.format_document(doc, i, "Darwin Writings"))
+                    source = getattr(doc.metadata, 'source', 'Unknown') if hasattr(doc, 'metadata') else 'Unknown'
+                    page = getattr(doc.metadata, 'page', 'N/A') if hasattr(doc, 'metadata') else 'N/A'
+                    llm_contents.append(f"SOURCE: {source}, PAGE: {page}, CONTENT: {doc.page_content}")
+                
+                header = f"\n{Fore.GREEN}╔═{'═' * 80}═╗"
+                title = f"{Fore.GREEN}║ {'RETRIEVED DARWIN WRITINGS':^83} ║{Style.RESET_ALL}"
+                footer = f"{Fore.GREEN}╚═{'═' * 80}═╝{Style.RESET_ALL}"
+                formatted_output = f"{header}\n{title}\n{footer}\n\n" + "\n\n".join(formatted_docs)
+                
+                # Store original content for the LLM
+                llm_content = "\nRetrieved Darwin Writings:\n" + "\n".join(llm_contents)
+                
+                # Print formatted output to console
+                print(formatted_output)
+                
+                # Return content for LLM
+                return llm_content
+            else:
+                print(f"{Fore.RED}[RAG] No specific writings found{Style.RESET_ALL}")
+                return None
+
+        return None
+
+class DarwinLLM:
+    def __init__(self):
+        self.model = ChatGroq(model_name="llama3-70b-8192", api_key=os.getenv("GROQ_API_KEY"))
+
+    def generate_response(self, messages):
+        langchain_messages = []
+        for msg in messages:
+            role = msg["role"]
+            content = msg["content"]
+            if role == "system":
+                langchain_messages.append(SystemMessage(content=content))
+            elif role == "user":
+                langchain_messages.append(HumanMessage(content=content))
+
+        response = self.model.invoke(langchain_messages)
+        return response.content.strip()
+
+def generate_darwin_response(user_input):
+    print(f"{Fore.BLUE}[RAG] Generating response for: {user_input}{Style.RESET_ALL}")
+    query_agent = MultiRAGQueryAgent()
+    llm = DarwinLLM()
+
+    # Start with prior memory and append this round
+    messages = conversation_history.copy()
+
+    retrieved_docs = query_agent.handle_query(user_input)
+    if retrieved_docs:
+        print(f"{Fore.BLUE}[RAG] Retrieved Documents Passed to LLM: (Content logged above){Style.RESET_ALL}")
+        messages.append({
+            "role": "system",
+            "content": (
+                "remember you are playing the character of Charles Darwin. "
+                "keep your answers short and concise, just a few sentences long. "
+                "Use the following excerpts from your work to enhance your response: " + retrieved_docs +
+                " If a personal anecdote/response is relevant, include it in output."
+            )
+        })
+
+    messages.append({"role": "user", "content": user_input})
+    reply = llm.generate_response(messages)
+    conversation_history.append({"role": "user", "content": user_input})
+    conversation_history.append({"role": "assistant", "content": reply})
+    return reply
+
+if __name__ == "__main__":
+    print(f"\n{Fore.GREEN}{'=' * 40}")
+    print(f"{Fore.YELLOW}Chatting with Charles Darwin (Ctrl+C to exit):")
+    print(f"{Fore.GREEN}{'=' * 40}{Style.RESET_ALL}\n")
+    while True:
+        try:
+            user_input = input(f"{Fore.CYAN}You: {Style.RESET_ALL}")
+            if not user_input.strip():
+                continue
+            response = generate_darwin_response(user_input)
+            print(f"{Fore.GREEN}Darwin: {Style.RESET_ALL}{response}\n")
+        except KeyboardInterrupt:
+            print(f"\n{Fore.YELLOW}Goodbye.{Style.RESET_ALL}")
+            break
