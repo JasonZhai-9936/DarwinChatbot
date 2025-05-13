@@ -8,11 +8,8 @@ import atexit
 from nicegui import ui, app
 import random
 
-# Comment out imports for removed functionality
-# from LivePortraitIdle import generate_fixed_chunks
-# from LatentSync import run_latentsync_inference
-# from SparkTTS import run_tts
-# from Dual_LLM import generate_darwin_response
+# Import LLM function - uncomment this line to use the LLM
+from LLM_Groq import generate_darwin_response
 from PlaylistManagerTest import idle_playlist_maker, response_playlist_maker, create_lipsync_playlist
 from BackgroundManager import initialize_background_player, create_background_playlist
 from uiTest import build_ui  # Import build_ui from the ui.py file
@@ -30,6 +27,7 @@ _shutdown_flag = False
 # === State Flags ===
 awaiting_response = False
 user_prompt = ""  # Store the user's prompt
+llm_response = ""  # Store the LLM's response
 
 # Expose media folder
 app.add_static_files('/stream', os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'stream')))
@@ -77,18 +75,32 @@ def idle_mode():
     return
 
 def response_mode():
-    global user_prompt
+    global user_prompt, llm_response
     print("[MAIN] Starting response mode...")
     
-    # MODIFIED: Test version - just show the prompt and generate a new playlist
-    print(f"[TEST] User prompt received: {user_prompt[:50]}...")
-    print("[TEST] In a real scenario, we would generate LLM response and audio here")
+    # Get LLM response using the imported function
+    try:
+        print(f"[LLM] Processing user prompt: {user_prompt[:50]}...")
+        
+        # Call the LLM to generate a response
+        llm_response = generate_darwin_response(user_prompt)
+        
+        print(f"[LLM] Response generated: {llm_response[:100]}...")
+        
+        # Log the full response to the console
+        print("[LLM] FULL RESPONSE:")
+        print("=============================")
+        print(llm_response)
+        print("=============================")
+    except Exception as e:
+        print(f"[ERROR] Failed to generate LLM response: {e}")
+        llm_response = "I beg your pardon, but I seem to be experiencing some difficulty in processing your query at the moment."
     
     # Generate a response playlist
     response_playlist_maker()
     
     # Update background playlist during response (smaller number of clips for circular display)
-    create_background_playlist(num_clips=3)
+    create_background_playlist(num_clips=10)
     
     success = True
     
@@ -131,10 +143,6 @@ def main_loop():
         print("[MAIN] Updating playlist with additional videos")
         create_lipsync_playlist()
         
-        # Also refresh the background playlist occasionally
-        if random.random() < 0.3:  # 30% chance to update background
-            create_background_playlist(num_clips=3)
-        
         print("[MAIN] Response mode completed, ready for next interaction")
     
     print(f"[THREAD] Thread {thread_id} shutting down")
@@ -167,6 +175,12 @@ def shutdown():
 
 # Register shutdown handler
 atexit.register(shutdown)
+
+# Add an endpoint to get the latest LLM response
+@app.get('/get_response')
+def get_response():
+    global llm_response
+    return {"response": llm_response}
 
 # Only run this block when the file is executed directly
 if __name__ in {"__main__", "__mp_main__"}:  # Support multiprocessing
