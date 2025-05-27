@@ -13,7 +13,7 @@ from colorama import Fore, Style, init
 init(autoreset=True)
 
 # Ensure GROQ key is set for dev
-os.environ["GROQ_API_KEY"] = "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"
+os.environ["GROQ_API_KEY"] = "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"
 
 # Basic short-term memory
 conversation_history = [

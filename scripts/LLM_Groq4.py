@@ -4,129 +4,67 @@ from langchain_core.messages import SystemMessage, HumanMessage
 from langchain_groq import ChatGroq
 from langchain_core.tools import Tool
 from langchain.agents import initialize_agent, AgentType
-import os
+import os, time
 import pathlib
 import random
 import json
+import re
 from textwrap import fill
 from colorama import Fore, Style, init
+
+# Import background functions from the proper module
+from BackgroundManager4 import create_background_playlist_from_query_with_llm, initialize_background_player
 
 # Initialize colorama for colored terminal output
 init(autoreset=True)
 
 # Ensure GROQ key is set for dev
-os.environ["GROQ_API_KEY"] = "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"
+os.environ["GROQ_API_KEY"] = "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"
 
-# Background Manager functions integrated directly
-OVERLAY_BASE_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "stream", "Overlay_Assets")
-BACKGROUND_PLAYLIST_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "stream", "playlist")
-BACKGROUND_PLAYLIST_PATH = os.path.join(BACKGROUND_PLAYLIST_DIR, "background_playlist.json")
-SUPPORTED_EXTENSIONS = [".mp4", ".png", ".jpg", ".jpeg", ".webp", ".gif"]
+# RESPONSE LENGTH LIMITS
+MAX_WORDS = 50          # Maximum 50 words
+MAX_SENTENCES = 3       # Maximum 3 sentences
+MAX_CHARACTERS = 300    # Maximum 300 characters (well under TTS 10K limit)
 
-# Basic short-term memory
+# Enhanced short-term memory with stronger length instructions
 conversation_history = [
     {"role": "system", "content": (
-        "You are Charles Darwin, the 19th-century naturalist. Respond in the first person using Victorian-era language. "
+        "You are Charles Darwin, the 19th-century naturalist. "
+        "CRITICAL: You MUST respond in exactly 1-3 sentences and NEVER exceed 50 words total. "
+        "Use Victorian-era language but be extremely concise. "
         "You are aware of the original Darwin's death but understand you exist in the modern world. "
-        "Respond concisely."
+        "Always prioritize brevity over completeness."
     )}
 ]
 
-def ensure_directories_exist():
-    """Ensure all required directories exist"""
-    os.makedirs(BACKGROUND_PLAYLIST_DIR, exist_ok=True)
-
-def is_supported_file(filename):
-    """Check if the file has a supported extension"""
-    return any(filename.lower().endswith(ext) for ext in SUPPORTED_EXTENSIONS)
-
-def get_available_folders():
-    """Get list of available folders in the Overlay_Assets directory"""
-    if not os.path.exists(OVERLAY_BASE_DIR):
-        print(f"[ERROR] Overlay base directory {OVERLAY_BASE_DIR} does not exist.")
-        return []
-    
-    folders = [f for f in os.listdir(OVERLAY_BASE_DIR) if os.path.isdir(os.path.join(OVERLAY_BASE_DIR, f))]
-    print(f"[BACKGROUND] Available folders: {folders}")
-    return folders
-
-def create_background_playlist_for_folder(folder_name, shuffle=True):
+def truncate_response(text, max_words=MAX_WORDS, max_sentences=MAX_SENTENCES, max_chars=MAX_CHARACTERS):
     """
-    Create a background playlist from files in the specified folder
-    
-    Args:
-        folder_name (str): Name of the folder to use
-        shuffle (bool): Whether to shuffle the files
-        
-    Returns:
-        list: List of file paths for the playlist
+    Aggressively truncate response to ensure it fits TTS limits
     """
-    ensure_directories_exist()
+    if not text:
+        return text
     
-    if not folder_name:
-        print("[BACKGROUND] No folder specified, creating empty playlist")
-        with open(BACKGROUND_PLAYLIST_PATH, "w") as f:
-            json.dump([], f)
-        return []
+    # First, truncate by character count
+    if len(text) > max_chars:
+        text = text[:max_chars].rsplit(' ', 1)[0] + "..."
+        print(f"[TRUNCATE] Response truncated by character limit to: {len(text)} chars")
     
-    folder_path = os.path.join(OVERLAY_BASE_DIR, folder_name)
-    if not os.path.exists(folder_path):
-        print(f"[ERROR] Folder {folder_path} does not exist.")
-        return []
+    # Split into sentences and limit
+    sentences = re.split(r'[.!?]+', text)
+    sentences = [s.strip() for s in sentences if s.strip()]
     
-    # Get all supported media files in the folder
-    files = []
-    for root, dirs, filenames in os.walk(folder_path):
-        for filename in filenames:
-            if is_supported_file(filename):
-                rel_path = os.path.relpath(os.path.join(root, filename), os.path.dirname(os.path.dirname(folder_path)))
-                rel_path = rel_path.replace("\\", "/")
-                files.append(rel_path)
+    if len(sentences) > max_sentences:
+        sentences = sentences[:max_sentences]
+        text = '. '.join(sentences) + '.'
+        print(f"[TRUNCATE] Response truncated to {max_sentences} sentences")
     
-    if not files:
-        print(f"[ERROR] No media files found in {folder_path}.")
-        return []
+    # Finally, truncate by word count
+    words = text.split()
+    if len(words) > max_words:
+        text = ' '.join(words[:max_words]) + "..."
+        print(f"[TRUNCATE] Response truncated to {max_words} words")
     
-    # Shuffle if requested
-    if shuffle:
-        random.shuffle(files)
-    
-    # Save playlist
-    with open(BACKGROUND_PLAYLIST_PATH, "w") as f:
-        json.dump(files, f)
-    
-    print(f"[BACKGROUND] New background playlist created with {len(files)} items from {folder_name}")
-    return files
-
-def initialize_background_player():
-    """Initialize the background player with a delay"""
-    # Start with an empty playlist
-    with open(BACKGROUND_PLAYLIST_PATH, "w") as f:
-        json.dump([], f)
-
-    def delayed_playlist_creation():
-        time.sleep(3)  # Delay before generating playlist
-        first_folder = next(iter(get_available_folders()), None)
-        if first_folder:
-            create_background_playlist_for_folder(first_folder)
-            print(f"[BACKGROUND] Background media now playing from {first_folder} after delay")
-
-    import threading
-    bg_thread = threading.Thread(target=delayed_playlist_creation)
-    bg_thread.daemon = True
-    bg_thread.start()
-
-    return True
-
-def create_background_playlist(num_clips=10):
-    """For backward compatibility with existing code"""
-    # Just pick a random folder for this function
-    available_folders = get_available_folders()
-    if not available_folders:
-        return []
-    
-    selected_folder = random.choice(available_folders)
-    return create_background_playlist_for_folder(selected_folder)
+    return text
 
 class VectorSearch:
     def __init__(self, index_path):
@@ -208,79 +146,6 @@ class MultiRAGQueryAgent:
         response = self.llm.invoke(prompt).content.strip()
         return response
 
-    def select_background_folder(self, query_type, user_input, available_folders):
-        """
-        Have the LLM directly select the best folder based on the query
-        """
-        if query_type == 1:
-            print(f"{Fore.MAGENTA}[RAG] Generic non-Darwin question - No specific background needed{Style.RESET_ALL}")
-            return None
-            
-        if not available_folders:
-            print(f"{Fore.RED}[RAG] No available folders to select from{Style.RESET_ALL}")
-            return None
-            
-        # Get the LLM to choose the most appropriate folder
-        folder_descriptions = {
-            "beagle voyage": "Content related to Darwin's journey on HMS Beagle, his travels, explorations, and discoveries during the voyage, especially in Galapagos.",
-            "darwin_family": "Content about Darwin's family life, including his wife Emma, children, parents, and other family members.",
-            "darwin_himself": "Personal content about Darwin himself, including portraits, biographical details, and personal history.",
-            "darwins finches": "Content specifically about Darwin's famous finches from the Galapagos Islands and their role in his theory development.",
-            "evolution_conv_div": "Content about evolutionary concepts of convergence and divergence, species adaptation and diversification.",
-            "natural_selection": "Content related to natural selection, Darwin's primary mechanism for evolution, survival of the fittest, adaptation.",
-            "shropshire": "Content about Darwin's birthplace and childhood in Shropshire, England, including his early years and education.",
-            "tree_of_life": "Content related to Darwin's concept of the tree of life, showing relationships between species and common ancestry."
-        }
-        
-        # Build a description of only the available folders
-        available_descriptions = []
-        for folder in available_folders:
-            folder_lower = folder.lower()
-            if folder_lower in folder_descriptions:
-                available_descriptions.append(f"{folder}: {folder_descriptions[folder_lower]}")
-            else:
-                available_descriptions.append(f"{folder}: Content related to {folder.replace('_', ' ')}")
-        
-        folder_info = "\n".join(available_descriptions)
-                
-        prompt = [
-            SystemMessage(content=(
-                f"You are helping select the most appropriate visual content to display for a Darwin chatbot.\n\n"
-                f"Based on the user's query, choose the SINGLE most relevant folder from the options below. "
-                f"The selected folder will display images/videos related to that aspect of Darwin's life or work.\n\n"
-                f"Available folders and their content:\n{folder_info}\n\n"
-                f"User query: {user_input}\n\n"
-                f"Analyze the query and return ONLY the exact name of the single most appropriate folder from the list. "
-                f"Return just the folder name, nothing else. If no folder is clearly relevant, return the name of the "
-                f"folder that contains general Darwin content."
-            )),
-        ]
-        
-        try:
-            response = self.llm.invoke(prompt).content.strip()
-            print(f"{Fore.MAGENTA}[RAG] LLM selected folder: {response}{Style.RESET_ALL}")
-            
-            # Check if the response is a valid folder
-            for folder in available_folders:
-                if folder.lower() == response.lower() or folder == response:
-                    print(f"{Fore.GREEN}[RAG] Found matching folder: {folder}{Style.RESET_ALL}")
-                    return folder
-                    
-            # If no exact match, check if any part of the response matches a folder
-            for folder in available_folders:
-                if folder.lower() in response.lower():
-                    print(f"{Fore.YELLOW}[RAG] Found partial match in LLM response: {folder}{Style.RESET_ALL}")
-                    return folder
-            
-            # If still no match, return a random folder
-            print(f"{Fore.RED}[RAG] No matching folder found in LLM response: '{response}'{Style.RESET_ALL}")
-            return random.choice(available_folders)
-            
-        except Exception as e:
-            print(f"{Fore.RED}[RAG] Error getting folder selection from LLM: {e}{Style.RESET_ALL}")
-            # Fallback to random selection
-            return random.choice(available_folders)
-
     def format_document(self, doc, index, doc_type):
         """Format a single document with nice borders and styling"""
         width = 80
@@ -311,20 +176,9 @@ class MultiRAGQueryAgent:
         query_type = self.classify_query_type(user_input)
         print(f"{Fore.MAGENTA}[RAG] Query classified as type: {query_type}{Style.RESET_ALL}")
         
-        # Get available folders for background content
-        available_folders = get_available_folders()
-        
-        # Have the LLM select the most appropriate folder based on the query
-        selected_folder = self.select_background_folder(query_type, user_input, available_folders)
-        
-        # Create background playlist from the selected folder
-        if selected_folder:
-            print(f"{Fore.MAGENTA}[RAG] Creating background playlist from folder: {selected_folder}{Style.RESET_ALL}")
-            create_background_playlist_for_folder(selected_folder)
-        else:
-            print(f"{Fore.MAGENTA}[RAG] No folder selected, using empty playlist{Style.RESET_ALL}")
-            with open(BACKGROUND_PLAYLIST_PATH, "w") as f:
-                json.dump([], f)
+        # Create background playlist using the proper background manager
+        print(f"{Fore.MAGENTA}[RAG] Creating background playlist for query{Style.RESET_ALL}")
+        create_background_playlist_from_query_with_llm(query_type, user_input, self.llm)
 
         if query_type == 1:
             print(f"{Fore.MAGENTA}[RAG] Generic question - No RAG retrieval needed{Style.RESET_ALL}")
@@ -437,15 +291,41 @@ def generate_darwin_response(user_input):
         messages.append({
             "role": "system",
             "content": (
-                "remember you are playing the character of Charles Darwin. "
-                "keep your answers short and concise, just a few sentences long. "
+                "You are Charles Darwin responding in character. "
+                "ABSOLUTE REQUIREMENT: Your response MUST be exactly 1-3 sentences and NEVER exceed 50 words total. "
+                "This is critical - the system cannot handle longer responses. "
+                "Be Victorian in tone but extremely brief. Choose only the most essential point to make. "
                 "Use the following excerpts from your work to enhance your response: " + retrieved_docs +
-                " If a personal anecdote/response is relevant, include it in output."
+                " Prioritize brevity over completeness."
+            )
+        })
+    else:
+        # Add extra brevity instruction even for non-RAG responses
+        messages.append({
+            "role": "system", 
+            "content": (
+                "CRITICAL: Your response MUST be exactly 1-3 sentences and NEVER exceed 50 words. "
+                "This is a hard system requirement. Be Victorian but extremely concise."
             )
         })
 
     messages.append({"role": "user", "content": user_input})
+    
+    # Generate initial response
     reply = llm.generate_response(messages)
+    
+    # Apply hard truncation as backup
+    original_length = len(reply)
+    reply = truncate_response(reply)
+    
+    if len(reply) != original_length:
+        print(f"{Fore.YELLOW}[LLM] Response was truncated from {original_length} to {len(reply)} characters{Style.RESET_ALL}")
+    
+    # Log final response stats
+    word_count = len(reply.split())
+    sentence_count = len([s for s in re.split(r'[.!?]+', reply) if s.strip()])
+    print(f"{Fore.BLUE}[LLM] Final response: {len(reply)} chars, {word_count} words, {sentence_count} sentences{Style.RESET_ALL}")
+    
     conversation_history.append({"role": "user", "content": user_input})
     conversation_history.append({"role": "assistant", "content": reply})
     return reply

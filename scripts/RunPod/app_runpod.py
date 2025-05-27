@@ -12,7 +12,7 @@ from LivePortraitIdle import generate_fixed_chunks
 from LatentSync import run_latentsync_inference
 from SparkTTS import run_tts
 from LLM import generate_darwin_response
-from PlaylistManager import idle_playlist_maker, response_playlist_maker, create_lipsync_playlist
+from scripts.old.PlaylistManager import idle_playlist_maker, response_playlist_maker, create_lipsync_playlist
 from Unused.ui_runpod import build_ui  # Import our improved UI
 
 REPO_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))  

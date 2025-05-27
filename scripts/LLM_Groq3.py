@@ -15,7 +15,7 @@ from colorama import Fore, Style, init
 init(autoreset=True)
 
 # Ensure GROQ key is set for dev
-os.environ["GROQ_API_KEY"] = "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"
+os.environ["GROQ_API_KEY"] = "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"
 
 # Background Manager functions integrated directly
 OVERLAY_BASE_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "stream", "Overlay_Assets")
@@ -99,24 +99,13 @@ def create_background_playlist_for_folder(folder_name, shuffle=True):
     return files
 
 def initialize_background_player():
-    """Initialize the background player with a delay"""
-    # Start with an empty playlist
+    """Ensure the background playlist is empty at startup."""
+    os.makedirs(BACKGROUND_PLAYLIST_DIR, exist_ok=True)
     with open(BACKGROUND_PLAYLIST_PATH, "w") as f:
         json.dump([], f)
-
-    def delayed_playlist_creation():
-        time.sleep(3)  # Delay before generating playlist
-        first_folder = next(iter(get_available_folders()), None)
-        if first_folder:
-            create_background_playlist_for_folder(first_folder)
-            print(f"[BACKGROUND] Background media now playing from {first_folder} after delay")
-
-    import threading
-    bg_thread = threading.Thread(target=delayed_playlist_creation)
-    bg_thread.daemon = True
-    bg_thread.start()
-
+    print("[BACKGROUND] Initialized empty background playlist (no autoplay).")
     return True
+
 
 def create_background_playlist(num_clips=10):
     """For backward compatibility with existing code"""
