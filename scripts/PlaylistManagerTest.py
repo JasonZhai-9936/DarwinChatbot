@@ -79,10 +79,10 @@ NODES = {
 TRANSITION_ODDS = {
     "main": {
         "main": 0.3,
-        "pipe": 0.1,
-        "newspaper": 0.15,
+        "pipe": 0.2,
+        "newspaper": 0.3,
         "phone": 0.1,
-        "standingMansion": 0.1,
+        "standingMansion": 0.2,
         "standingBeach": 0.00
     },
     "pipe": {
@@ -100,7 +100,7 @@ TRANSITION_ODDS = {
     "standingMansion": {
         "standingMansion": 0.5,
         "standingMansionSmoke": 0.0,
-        "standingBeach": 0.0,
+        "standingBeach": 0.2,
         "main": 0.1
     },
     "standingMansionSmoke": {
@@ -109,9 +109,9 @@ TRANSITION_ODDS = {
     },
     "standingBeach": {
         "standingBeach": 0.5,
-        "standingBeachSmoke": 0.2,
+        "standingBeachSmoke": 0.0,
         "standingMansion": 0.2,
-        "main": 0.1
+        "main": 0.0
     },
     "standingBeachSmoke": {
         "standingBeachSmoke": 0.7,

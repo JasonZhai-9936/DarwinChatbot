@@ -7,11 +7,14 @@ import glob
 import atexit
 from nicegui import ui, app
 import random
+from PlaylistManagerTest3 import load_scripted_playlist
 
 # Import LLM function with the correct filename - now includes background management
 from LLM_Groq3 import generate_darwin_response, initialize_background_player
-from PlaylistManagerTest import idle_playlist_maker, response_playlist_maker, create_lipsync_playlist
-from uiTest import build_ui  # Import build_ui from the ui.py file
+from PlaylistManagerTest3 import idle_playlist_maker, response_playlist_maker, create_lipsync_playlist, make_response_playlist_with_lipsync
+from uiTest import build_ui 
+from SparkTTS import run_tts
+
 
 REPO_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))  
 STREAM_LIVE_DIR = os.path.join(REPO_DIR, "stream", "live")
@@ -76,71 +79,75 @@ def idle_mode():
 def response_mode():
     global user_prompt, llm_response
     print("[MAIN] Starting response mode...")
-    
-    # Get LLM response using the imported function
+
     try:
+        # Play lipsync video immediately
+        print("[VIDEO] Creating and playing lipsync playlist...")
+        make_response_playlist_with_lipsync()
+        time.sleep(1)  # allow frontend to start playing
+
+        # Now begin processing
         print(f"[LLM] Processing user prompt: {user_prompt[:50]}...")
-        
-        # Call the LLM to generate a response - this will now also handle background content selection
         llm_response = generate_darwin_response(user_prompt)
-        
-        print(f"[LLM] Response generated: {llm_response[:100]}...")
-        
-        # Log the full response to the console
+
+        print(f"[LLM] Response generated: {llm_response[:300]}...")
         print("[LLM] FULL RESPONSE:")
         print("=============================")
         print(llm_response)
         print("=============================")
+
+        print("[TTS] Converting text to speech...")
+        speech_file = run_tts(text=llm_response)
+        print(f"[TTS] Speech generated: {speech_file}")
+
     except Exception as e:
         print(f"[ERROR] Failed to generate LLM response: {e}")
         llm_response = "I beg your pardon, but I seem to be experiencing some difficulty in processing your query at the moment."
-    
-    # Generate a response playlist for the main video player
-    response_playlist_maker()
-    
-    success = True
-    
-    # Reset the user prompt for next interaction
+
     user_prompt = ""
-    
-    return success
+    return True
+
+
+
+
 
 def main_loop():
     global awaiting_response
     thread_id = threading.get_ident()
     print(f"[THREAD] Main loop running in thread {thread_id}")
     
-    # Start with an initial idle playlist
-    idle_playlist_maker()
+    # Load scripted playlist if present
+    if not load_scripted_playlist():
+        idle_playlist_maker()
+        initialize_background_player()
     
-    # Initialize the background video player with a delay
-    initialize_background_player()
-    
+    just_responded = False
+
     while not _shutdown_flag:
         awaiting_response = False
-        idle_mode()
 
-        # Wait here for response button to be pressed
+        # Only re-run idle mode if we didn't just finish a response
+        if not just_responded:
+            idle_mode()
+
+        just_responded = False  # Reset flag
+        
         print("[MAIN] Idle finished, waiting for trigger")
         while not awaiting_response and not _shutdown_flag:
-            time.sleep(1)  # Sleep without printing to reduce log spam
+            time.sleep(1)  
         
-        # Check if we got shutdown while waiting
         if _shutdown_flag:
             break
             
         print("[MAIN] Response triggered, starting response processing")
         response_mode()
-        
-        # Add a delay to ensure the video has time to play
-        time.sleep(10)
-        
-        # After response, create a new playlist for continued interaction
-        print("[MAIN] Updating playlist with additional videos")
-        create_lipsync_playlist()
-        
+
+        time.sleep(3)
+
         print("[MAIN] Response mode completed, ready for next interaction")
-    
+
+        just_responded = True  # Skip idle playlist regen on next loop
+
     print(f"[THREAD] Thread {thread_id} shutting down")
 
 def trigger_response_with_prompt(prompt):

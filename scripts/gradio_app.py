@@ -13,7 +13,7 @@ from LivePortraitIdle import generate_fixed_chunks
 from LatentSync import run_latentsync_inference
 from SparkTTS import run_tts
 from Dual_LLM import generate_darwin_response
-from PlaylistManager import idle_playlist_maker, response_playlist_maker, create_lipsync_playlist
+from scripts.old.PlaylistManager import idle_playlist_maker, response_playlist_maker, create_lipsync_playlist
 
 REPO_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))  
 STREAM_LIVE_DIR = os.path.join(REPO_DIR, "stream", "live")

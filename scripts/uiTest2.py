@@ -18,10 +18,10 @@ def build_ui(trigger_response_callback):
             with video_container:
                 ui.html('''
                 <div id="custom-video-container" style="width: 100%; height: 100%; position: relative;">
-                    <video id="videoA" autoplay playsinline controls muted
+                    <video id="videoA" autoplay playsinline controls 
                         style="width: 100%; height: 100%; object-fit: contain; position: absolute; top: 0; left: 0; z-index: 1; opacity: 1; transition: opacity 0.5s;">
                     </video>
-                    <video id="videoB" autoplay playsinline controls muted
+                    <video id="videoB" autoplay playsinline controls 
                         style="width: 100%; height: 100%; object-fit: contain; position: absolute; top: 0; left: 0; z-index: 0; opacity: 0; transition: opacity 0.5s;">
                     </video>
                     <!-- AUDIO PLAYER FOR SPEECH -->
@@ -60,6 +60,81 @@ def build_ui(trigger_response_callback):
                 max-width: 100%;
                 overflow-wrap: break-word;
             "></div>
+
+            <!-- FULLSCREEN BACKGROUND VIDEO OVERLAY -->
+            <div id="fullscreen-overlay" style="
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100vw;
+                height: 100vh;
+                background: rgba(0, 0, 0, 0.95);
+                z-index: 9999;
+                display: none;
+                opacity: 0;
+                transition: opacity 1s ease-in-out;
+            ">
+                <video id="fullscreen-background-player" autoplay muted loop
+                    style="width: 100%; height: 100%; object-fit: cover;">
+                </video>
+                
+                <!-- Exit Button -->
+                <button id="fullscreen-exit-btn" style="
+                    position: absolute;
+                    top: 30px;
+                    right: 30px;
+                    width: 60px;
+                    height: 60px;
+                    background: rgba(255, 255, 255, 0.2);
+                    border: 2px solid rgba(255, 255, 255, 0.5);
+                    border-radius: 50%;
+                    color: white;
+                    font-size: 24px;
+                    font-weight: bold;
+                    cursor: pointer;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    backdrop-filter: blur(10px);
+                    transition: all 0.3s ease;
+                    z-index: 10000;
+                " onmouseover="this.style.background='rgba(255, 255, 255, 0.3)'; this.style.transform='scale(1.1)'" 
+                   onmouseout="this.style.background='rgba(255, 255, 255, 0.2)'; this.style.transform='scale(1)'">
+                    ✕
+                </button>
+                
+                <!-- Title Overlay -->
+                <div id="fullscreen-title" style="
+                    position: absolute;
+                    bottom: 50px;
+                    left: 50%;
+                    transform: translateX(-50%);
+                    color: white;
+                    font-size: 32px;
+                    font-weight: bold;
+                    text-align: center;
+                    text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
+                    padding: 20px;
+                    background: rgba(0, 0, 0, 0.3);
+                    border-radius: 10px;
+                    backdrop-filter: blur(10px);
+                "></div>
+                
+                <!-- Auto-close timer indicator -->
+                <div id="timer-indicator" style="
+                    position: absolute;
+                    top: 30px;
+                    left: 30px;
+                    color: white;
+                    font-size: 16px;
+                    background: rgba(0, 0, 0, 0.5);
+                    padding: 10px 15px;
+                    border-radius: 20px;
+                    backdrop-filter: blur(10px);
+                ">
+                    Auto-close in: <span id="timer-countdown">20</span>s
+                </div>
+            </div>
             ''')
 
             # === AUDIO STATUS DISPLAY ===
@@ -223,7 +298,87 @@ def build_ui(trigger_response_callback):
                 }
             }
 
-            // === BACKGROUND VIDEO FUNCTIONS ===
+            // === FULLSCREEN BACKGROUND VIDEO FUNCTIONS ===
+            let fullscreenTimer = null;
+            let countdownTimer = null;
+            let fullscreenTimeoutId = null;
+            
+            const fullscreenOverlay = document.getElementById('fullscreen-overlay');
+            const fullscreenPlayer = document.getElementById('fullscreen-background-player');
+            const fullscreenTitle = document.getElementById('fullscreen-title');
+            const fullscreenExitBtn = document.getElementById('fullscreen-exit-btn');
+            const timerIndicator = document.getElementById('timer-indicator');
+            const timerCountdown = document.getElementById('timer-countdown');
+
+            function enterFullscreenMode(mediaPath, title) {
+                console.log('Entering fullscreen mode with:', mediaPath);
+                
+                // Set up the fullscreen video
+                const timestamp = new Date().getTime();
+                fullscreenPlayer.src = `${mediaPath}?t=${timestamp}`;
+                fullscreenTitle.innerText = title || '';
+                
+                // Show the overlay with fade-in
+                fullscreenOverlay.style.display = 'block';
+                setTimeout(() => {
+                    fullscreenOverlay.style.opacity = '1';
+                }, 50);
+                
+                // Start countdown timer
+                let timeLeft = 20;
+                timerCountdown.innerText = timeLeft;
+                
+                countdownTimer = setInterval(() => {
+                    timeLeft--;
+                    timerCountdown.innerText = timeLeft;
+                    
+                    if (timeLeft <= 0) {
+                        exitFullscreenMode();
+                    }
+                }, 1000);
+                
+                // Auto-exit after 20 seconds
+                fullscreenTimer = setTimeout(() => {
+                    exitFullscreenMode();
+                }, 20000);
+                
+                console.log('Fullscreen mode activated');
+            }
+
+            function exitFullscreenMode() {
+                console.log('Exiting fullscreen mode');
+                
+                // Clear timers
+                if (fullscreenTimer) {
+                    clearTimeout(fullscreenTimer);
+                    fullscreenTimer = null;
+                }
+                if (countdownTimer) {
+                    clearInterval(countdownTimer);
+                    countdownTimer = null;
+                }
+                
+                // Fade out the overlay
+                fullscreenOverlay.style.opacity = '0';
+                
+                setTimeout(() => {
+                    fullscreenOverlay.style.display = 'none';
+                    fullscreenPlayer.pause();
+                    fullscreenPlayer.src = '';
+                    
+                    // Resume normal background video if there's a playlist
+                    if (bgPlaylist.length > 0) {
+                        playBackgroundVideo(bgCurrentIndex);
+                    }
+                }, 1000);
+                
+                console.log('Fullscreen mode deactivated');
+            }
+
+            // Add click handler for exit button
+            fullscreenExitBtn.addEventListener('click', exitFullscreenMode);
+
+            // === BACKGROUND VIDEO FUNCTIONS (UPDATED) ===
             let bgPlaylist = [];
             let bgCurrentIndex = 0;
             const backgroundVideo = document.getElementById('background-player');
@@ -235,6 +390,7 @@ def build_ui(trigger_response_callback):
                     document.getElementById('rectangular-background-container').style.display = 'none';
                     return;
                 }
+                
                 bgTitle.innerText = "";
 
                 // Show the container only when playing something
@@ -254,6 +410,16 @@ def build_ui(trigger_response_callback):
                     backgroundVideo.src = `${mediaPath}?t=${timestamp}`;
                     backgroundVideo.style.display = "block";
                     backgroundVideo.play().catch(err => console.error('Background video play error:', err));
+                    
+                    // TRIGGER FULLSCREEN MODE WITH 5 SECOND DELAY
+                    if (fullscreenTimeoutId) {
+                        clearTimeout(fullscreenTimeoutId);
+                    }
+                    
+                    fullscreenTimeoutId = setTimeout(() => {
+                        enterFullscreenMode(mediaPath, baseName);
+                    }, 5000);
+                    
                 } else {
                     backgroundVideo.style.display = "none";
                     const imgOverlay = document.createElement("img");
@@ -261,10 +427,20 @@ def build_ui(trigger_response_callback):
                     imgOverlay.style.cssText = "position: absolute; width: 100%; height: 100%; object-fit: cover; top: 0; left: 0; z-index: 1;";
                     document.getElementById("rectangular-background-container").appendChild(imgOverlay);
 
-                    setTimeout(() => {
-                        imgOverlay.remove();
-                        bgCurrentIndex = (bgCurrentIndex + 1) % bgPlaylist.length;
-                        playBackgroundVideo(bgCurrentIndex);
+                    // TRIGGER FULLSCREEN MODE WITH 5 SECOND DELAY FOR IMAGES TOO
+                    if (fullscreenTimeoutId) {
+                        clearTimeout(fullscreenTimeoutId);
+                    }
+                    
+                    fullscreenTimeoutId = setTimeout(() => {
+                        enterFullscreenMode(mediaPath, baseName);
+                        
+                        // For images, set a longer display time in fullscreen
+                        setTimeout(() => {
+                            imgOverlay.remove();
+                            bgCurrentIndex = (bgCurrentIndex + 1) % bgPlaylist.length;
+                            playBackgroundVideo(bgCurrentIndex);
+                        }, 25000); // 25 seconds total (5 delay + 20 fullscreen)
                     }, 5000);
                 }
 
