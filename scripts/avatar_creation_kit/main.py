@@ -1,10 +1,18 @@
-# avatar_creation_kit.py - Avatar Creation Kit for Darwin AI
+# avatar_creation_kit.py - Avatar Creation Kit for Darwin AI (Updated with Node Manager)
 # Location: Darwinchatbot/scripts/avatar_creation_kit/avatar_creation_kit.py
 
 import os
 import base64
 from nicegui import ui, app
 from pathlib import Path
+
+# Import the node manager
+try:
+    from node_manager import NodeManager, create_node_manager_ui
+    NODE_MANAGER_AVAILABLE = True
+except ImportError:
+    print("[CREATION KIT] Warning: node_manager.py not found. Node Manager will be disabled.")
+    NODE_MANAGER_AVAILABLE = False
 
 # === Configuration ===
 CREATION_KIT_PORT = 8081
@@ -25,7 +33,8 @@ os.makedirs(TEMP_DIR, exist_ok=True)
 # === Global State ===
 current_portrait_image = None
 current_prompt = ""
-current_page = "avatar_creation"  # Track current page: "avatar_creation" or "supporting_assets"
+current_page = "avatar_creation"  # Track current page: "avatar_creation", "supporting_assets", or "node_manager"
+node_manager_instance = None
 
 def create_portrait_creator_ui():
     """Create the Portrait Creator column UI"""
@@ -142,7 +151,7 @@ def create_character_generation_ui():
             label='Avatar Character Description',
             placeholder='Describe your avatar character in detail...\n\nExample: A wise elderly professor with gray hair, wearing Victorian-era clothing, kind eyes, and a gentle smile. Should appear scholarly and approachable.'
         ).classes('w-full').props('outlined rows=8 filled')
-        
+
 def create_asset_search_ui():
     """Create the Asset Search column UI with auto generation and link inputs"""
     
@@ -246,18 +255,40 @@ def create_asset_organization_ui():
                 ui.button('Create Custom Folders', icon='add').classes('bg-gray-600 text-white')
 
 def create_supporting_assets_page():
-    """Create the Supporting Asset Generation page"""
+    """Create the Supporting Asset Generation page with horizontal scrolling"""
     
-    # Main Content Area - 2 columns
-    with ui.row().classes('w-full min-h-screen bg-gray-100 p-6 gap-6'):
-        
-        # Asset Search Column (Left)
-        with ui.card().classes('flex-1 min-h-96'):
-            create_asset_search_ui()
-        
-        # Asset Organization Column (Right)
-        with ui.card().classes('flex-1 min-h-96'):
-            create_asset_organization_ui()
+    # Main Content Area - Horizontal scrolling container
+    with ui.scroll_area().classes('w-full min-h-screen bg-gray-100'):
+        with ui.row().classes('p-6 gap-6').style('min-width: fit-content;'):
+            
+            # Asset Search Column
+            with ui.card().classes('min-h-96').style('width: 300px; flex-shrink: 0;'):
+                create_asset_search_ui()
+            
+            # Asset Organization Column
+            with ui.card().classes('min-h-96').style('width: 300px; flex-shrink: 0;'):
+                create_asset_organization_ui()
+
+def create_node_manager_page():
+    """Create the Node Manager page"""
+    global node_manager_instance
+    
+    if not NODE_MANAGER_AVAILABLE:
+        # Show error message if node manager is not available
+        with ui.column().classes('w-full p-6 items-center justify-center'):
+            ui.label('Node Manager Unavailable').classes('text-2xl font-bold text-red-600 mb-4')
+            ui.label('The node_manager.py file could not be loaded.').classes('text-lg text-gray-600 mb-2')
+            ui.label('Please ensure node_manager.py is in the same directory as this script.').classes('text-sm text-gray-500')
+        return
+    
+    # Initialize node manager if not already done
+    if node_manager_instance is None:
+        node_manager_instance = NodeManager(OUTPUT_DIR)
+    
+    # Create the node manager UI
+    with ui.row().classes('w-full min-h-screen bg-gray-100 p-6'):
+        with ui.card().classes('w-full min-h-96'):
+            create_node_manager_ui(node_manager_instance)
 
 def create_main_ui():
     """Create the main Creation Kit interface with page switching"""
@@ -287,6 +318,7 @@ def create_main_ui():
                 # Navigation buttons
                 avatar_btn_container = ui.row()
                 assets_btn_container = ui.row()
+                nodes_btn_container = ui.row()
     
     def create_avatar_button(active=True):
         avatar_btn_container.clear()
@@ -304,11 +336,24 @@ def create_main_ui():
                 btn_classes += ' ring-2 ring-green-400'
             return ui.button('Supporting Asset Generation', icon='folder').classes(btn_classes).on('click', switch_to_assets_page)
     
+    def create_nodes_button(active=False):
+        nodes_btn_container.clear()
+        with nodes_btn_container:
+            btn_classes = 'bg-blue-600 text-white'
+            if active:
+                btn_classes += ' ring-2 ring-green-400'
+            # Show different icon/text if node manager is unavailable
+            if NODE_MANAGER_AVAILABLE:
+                return ui.button('Node Manager', icon='account_tree').classes(btn_classes).on('click', switch_to_nodes_page)
+            else:
+                return ui.button('Node Manager (Unavailable)', icon='account_tree').classes(btn_classes + ' opacity-50').props('disable').on('click', switch_to_nodes_page)
+    
     def switch_to_avatar_page():
         global current_page
         current_page = "avatar_creation"
         create_avatar_button(active=True)
         create_assets_button(active=False)
+        create_nodes_button(active=False)
         update_page_content()
     
     def switch_to_assets_page():
@@ -316,6 +361,15 @@ def create_main_ui():
         current_page = "supporting_assets"
         create_avatar_button(active=False)
         create_assets_button(active=True)
+        create_nodes_button(active=False)
+        update_page_content()
+    
+    def switch_to_nodes_page():
+        global current_page
+        current_page = "node_manager"
+        create_avatar_button(active=False)
+        create_assets_button(active=False)
+        create_nodes_button(active=True)
         update_page_content()
     
     def update_page_content():
@@ -323,31 +377,42 @@ def create_main_ui():
         with content_container:
             if current_page == "avatar_creation":
                 create_avatar_creation_page()
-            else:
+            elif current_page == "supporting_assets":
                 create_supporting_assets_page()
+            elif current_page == "node_manager":
+                create_node_manager_page()
     
     # Initial setup
     create_avatar_button(active=True)
     create_assets_button(active=False)
+    create_nodes_button(active=False)
     update_page_content()
 
 def create_avatar_creation_page():
-    """Create the original Avatar Creation page"""
+    """Create the original Avatar Creation page with horizontal scrolling columns"""
     
-    # Main Content Area - 3 equal columns
-    with ui.row().classes('w-full min-h-screen bg-gray-100 p-6 gap-6'):
-        
-        # Portrait Creator Column (Left)
-        with ui.card().classes('flex-1 min-h-96'):
-            create_portrait_creator_ui()
-        
-        # Video Creator Column (Middle)
-        with ui.card().classes('flex-1 min-h-96'):
-            create_video_creator_ui()
-        
-        # Character Generation Column (Right)
-        with ui.card().classes('flex-1 min-h-96'):
-            create_character_generation_ui()
+    # Main Content Area - Horizontal scrolling container
+    with ui.scroll_area().classes('w-full min-h-screen bg-gray-100'):
+        with ui.row().classes('p-6 gap-6').style('min-width: fit-content; flex-wrap: nowrap;'):
+            
+            # Node Manager Placeholder Column (First)
+            with ui.card().classes('min-h-96').style('width: 400px; flex-shrink: 0;'):
+                with ui.column().classes('w-full p-6 gap-6'):
+                    ui.label('Node Manager').classes('text-2xl font-bold text-center mb-4')
+                    with ui.card().classes('w-full p-4 bg-gray-50'):
+                        ui.label('Node connection visualization will appear here. Use the Node Manager tab for full functionality.').classes('text-sm text-gray-600 text-center')
+            
+            # Portrait Creator Column
+            with ui.card().classes('min-h-96').style('width: 400px; flex-shrink: 0;'):
+                create_portrait_creator_ui()
+            
+            # Video Creator Column
+            with ui.card().classes('min-h-96').style('width: 400px; flex-shrink: 0;'):
+                create_video_creator_ui()
+            
+            # Character Generation Column
+            with ui.card().classes('min-h-96').style('width: 400px; flex-shrink: 0;'):
+                create_character_generation_ui()
 
 def main():
     """Main entry point for the Avatar Creation Kit"""
@@ -357,6 +422,11 @@ def main():
     print(f"[CREATION KIT] Project root: {os.path.abspath(PROJECT_ROOT)}")
     print(f"[CREATION KIT] Output directory: {os.path.abspath(OUTPUT_DIR)}")
     
+    if NODE_MANAGER_AVAILABLE:
+        print(f"[CREATION KIT] Node Manager: Available")
+    else:
+        print(f"[CREATION KIT] Node Manager: Unavailable (node_manager.py not found)")
+    
     # Set up the UI
     create_main_ui()
     
@@ -365,6 +435,16 @@ def main():
     <style>
         .nicegui-content {
             padding: 0 !important;
+        }
+        
+        /* Horizontal scroll container */
+        .q-scrollarea__container {
+            overflow-x: auto !important;
+        }
+        
+        /* Prevent column wrapping */
+        .q-col-gutter-md > * {
+            flex-wrap: nowrap !important;
         }
         
         /* Custom drag and drop styling */
@@ -390,6 +470,13 @@ def main():
         
         .q-btn.border-green-500:hover {
             background-color: rgba(34, 197, 94, 0.1);
+        }
+        
+        /* Node canvas styling */
+        .node-canvas {
+            background-image: 
+                radial-gradient(circle at 1px 1px, rgba(0,0,0,.15) 1px, transparent 0);
+            background-size: 20px 20px;
         }
     </style>
     ''')
