@@ -16,7 +16,7 @@ from LLM_Groq4 import generate_darwin_response
 from BackgroundManager4 import initialize_background_player
 
 # Import playlist functions
-from PlaylistManagerTest4 import (
+from PlaylistManagerTest5 import (
     idle_playlist_maker, 
     response_playlist_maker, 
     create_lipsync_playlist, 
