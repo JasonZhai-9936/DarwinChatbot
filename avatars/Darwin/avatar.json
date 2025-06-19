@@ -1,0 +1,13 @@
+{
+  "name": "Darwin",
+  "portrait_prompt": "",
+  "personality": "",
+  "character_description": "skajbdksbdkjdsb",
+  "metadata": {
+    "created": "2025-06-06T10:52:04.008517",
+    "last_modified": "2025-06-06T15:37:37.579635",
+    "version": "1.0",
+    "avatar_id": "ecb44d8a-85a2-4c9c-83aa-763efa44d893"
+  },
+  "node_file": "node_network.json"
+}
