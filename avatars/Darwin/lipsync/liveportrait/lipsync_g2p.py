@@ -179,8 +179,8 @@ def check_ffmpeg():
     print("❌ FFmpeg not found!")
     return None
 
-def trim_clip_to_duration(input_path, output_path, target_duration, ffmpeg_path='ffmpeg'):
-    """Trim clip to target duration by cutting from the front if needed."""
+def adjust_clip_speed_to_duration(input_path, output_path, target_duration, ffmpeg_path='ffmpeg'):
+    """Adjust clip speed to match target duration by slowing down or speeding up."""
     info = get_video_info(input_path)
     if not info:
         return False
@@ -189,35 +189,51 @@ def trim_clip_to_duration(input_path, output_path, target_duration, ffmpeg_path=
     if original_duration <= 0:
         return False
     
-    # If original is shorter than target, use the whole clip
-    if original_duration <= target_duration:
-        cmd = [
-            ffmpeg_path, '-i', input_path,
-            '-c:v', 'libx264',
-            '-preset', 'slow',
-            '-crf', '18',
-            '-y', output_path
-        ]
-    else:
-        # Trim from the front: skip the excess seconds at the beginning
-        seconds_to_skip = original_duration - target_duration
-        cmd = [
-            ffmpeg_path, '-ss', str(seconds_to_skip), '-i', input_path,
-            '-t', str(target_duration),
-            '-c:v', 'libx264',
-            '-preset', 'slow',
-            '-crf', '18',
-            '-y', output_path
-        ]
+    # Calculate speed factor
+    # If target > original, we need to slow down (speed < 1.0)
+    # If target < original, we need to speed up (speed > 1.0)
+    speed_factor = original_duration / target_duration
+    
+    # Limit extreme speed changes for quality reasons
+    min_speed = 0.25  # Don't slow down more than 4x
+    max_speed = 4.0   # Don't speed up more than 4x
+    
+    if speed_factor < min_speed:
+        speed_factor = min_speed
+        print(f"⚠️  Speed factor limited to {min_speed} (was {original_duration/target_duration:.2f})")
+    elif speed_factor > max_speed:
+        speed_factor = max_speed
+        print(f"⚠️  Speed factor limited to {max_speed} (was {original_duration/target_duration:.2f})")
+    
+    # Use setpts filter to adjust playback speed
+    # setpts multiplier: 1.0 = normal speed, 0.5 = 2x speed, 2.0 = 0.5x speed
+    setpts_multiplier = 1.0 / speed_factor
+    
+    cmd = [
+        ffmpeg_path, '-i', input_path,
+        '-filter:v', f'setpts={setpts_multiplier}*PTS',
+        '-c:v', 'libx264',
+        '-preset', 'slow',
+        '-crf', '18',
+        '-y', output_path
+    ]
     
     try:
         result = subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=60)
+        
+        # Verify the output duration
+        new_info = get_video_info(output_path)
+        if new_info:
+            actual_duration = new_info['duration']
+            print(f"📐 Speed adjusted: {original_duration:.2f}s → {actual_duration:.2f}s (target: {target_duration:.2f}s, factor: {speed_factor:.2f})")
+        
         return True
-    except subprocess.CalledProcessError:
+    except subprocess.CalledProcessError as e:
+        print(f"❌ Speed adjustment failed: {e}")
         return False
 
 def create_temp_video(input_videos, durations, output_path, ffmpeg_path='ffmpeg', target_fps=24):
-    """Create a video by concatenating and timing clips using trimming instead of speed adjustment."""
+    """Create a video by concatenating clips with speed adjustment to match timing."""
     
     # Create a temporary directory for processing
     with tempfile.TemporaryDirectory() as temp_dir:
@@ -234,11 +250,12 @@ def create_temp_video(input_videos, durations, output_path, ffmpeg_path='ffmpeg'
             original_duration = info['duration']
             temp_output = os.path.join(temp_dir, f"segment_{i}.mp4")
             
-            # Always trim to exact duration - no speed adjustment threshold
-            if trim_clip_to_duration(video_path, temp_output, target_duration, ffmpeg_path):
+            # Always adjust speed to match target duration
+            if adjust_clip_speed_to_duration(video_path, temp_output, target_duration, ffmpeg_path):
                 temp_files.append(temp_output)
             else:
                 # Fallback: use original clip with basic processing
+                print(f"⚠️  Using original clip for segment {i} (speed adjustment failed)")
                 cmd = [
                     ffmpeg_path, '-i', video_path,
                     '-c:v', 'libx264', '-preset', 'slow', '-crf', '18',
@@ -250,6 +267,7 @@ def create_temp_video(input_videos, durations, output_path, ffmpeg_path='ffmpeg'
                     result = subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=30)
                     temp_files.append(temp_output)
                 except subprocess.CalledProcessError:
+                    print(f"❌ Failed to process segment {i}")
                     continue
         
         if not temp_files:
@@ -275,10 +293,15 @@ def create_temp_video(input_videos, durations, output_path, ffmpeg_path='ffmpeg'
             raise
 
 def create_pause_video(duration, silence_video_path, output_path, ffmpeg_path='ffmpeg', target_fps=24):
-    """Create a pause video by looping a silence clip."""
+    """Create a pause video by adjusting speed of silence clip."""
     if duration <= 0:
         return None
     
+    # Use speed adjustment instead of looping
+    if adjust_clip_speed_to_duration(silence_video_path, output_path, duration, ffmpeg_path):
+        return output_path
+    
+    # Fallback to original method if speed adjustment fails
     info = get_video_info(silence_video_path)
     if not info:
         return None
@@ -333,24 +356,34 @@ def concatenate_videos_simple(video_files, output_path, ffmpeg_path='ffmpeg'):
             print(f"❌ Error concatenating videos: {e}")
             raise
 
-def print_phoneme_timing_outline(word_timings):
-    """Print a detailed timing outline for words and phonemes."""
+def print_extended_timing_outline(extended_word_timings):
+    """Print a detailed timing outline for words and phonemes with extensions."""
     print("\n" + "="*80)
-    print("PHONEME-BASED SPEECH TIMING OUTLINE")
+    print("PHONEME-BASED SPEECH TIMING OUTLINE (SPEED ADJUSTMENT + WORD EXTENSION MODE)")
     print("="*80)
     
-    total_words = len(word_timings)
-    total_duration = word_timings[-1]['end'] if word_timings else 0
-    total_phonemes = sum(len(w['phonemes']) for w in word_timings)
+    total_words = len(extended_word_timings)
+    total_duration = extended_word_timings[-1]['extended_end'] + extended_word_timings[-1]['remaining_gap'] if extended_word_timings else 0
+    total_phonemes = sum(len(w['phonemes']) for w in extended_word_timings)
+    total_extensions = sum(1 for w in extended_word_timings if w['extension_duration'] > 0.01)
     
     print(f"📊 SUMMARY: {total_words} words, {total_phonemes} phonemes over {total_duration:.2f} seconds")
+    print(f"🔄 EXTENSIONS: {total_extensions} words will extend their last viseme into gaps")
     print()
     
-    for i, word_data in enumerate(word_timings):
+    for i, word_data in enumerate(extended_word_timings):
         phonemes = word_data['phonemes']
         phoneme_duration = word_data['phoneme_duration']
+        extension_duration = word_data['extension_duration']
+        remaining_gap = word_data['remaining_gap']
         
-        print(f"Word {i+1:2d}: '{word_data['word']}' [{word_data['start']:.2f}s → {word_data['end']:.2f}s] ({word_data['duration']:.2f}s)")
+        extension_info = ""
+        if extension_duration > 0.01:
+            extension_info = f" + {extension_duration:.2f}s extension"
+        if remaining_gap > 0.01:
+            extension_info += f" + {remaining_gap:.2f}s silence"
+        
+        print(f"Word {i+1:2d}: '{word_data['word']}' [{word_data['start']:.2f}s → {word_data['end']:.2f}s] ({word_data['duration']:.2f}s){extension_info}")
         print(f"         Phonemes: {phonemes}")
         
         # Show individual phoneme timings and visemes
@@ -361,32 +394,87 @@ def print_phoneme_timing_outline(word_timings):
             clip_name = VISEME_TO_IPA_CLIP.get(viseme_id, 'MISSING')
             status = "✓" if clip_name and clip_name != 'MISSING' else "✗"
             
-            # Check if we can get clip info for timing note
-            trim_note = ""
+            # Check if we can get clip info for speed adjustment note
+            speed_note = ""
             if clip_name and clip_name != 'MISSING':
                 clip_path = Path('.') / f"{clip_name}.mp4"  # Assuming clips_dir is current dir
                 if clip_path.exists():
                     clip_info = get_video_info(str(clip_path))
                     if clip_info:
                         clip_duration = clip_info['duration']
-                        if phoneme_duration < clip_duration:
-                            trim_note = " [will trim]"
-                        elif phoneme_duration > clip_duration:
-                            trim_note = " [will loop]"
+                        speed_factor = clip_duration / phoneme_duration
+                        if speed_factor > 1.1:
+                            speed_note = f" [slow to {speed_factor:.1f}x]"
+                        elif speed_factor < 0.9:
+                            speed_note = f" [speed to {speed_factor:.1f}x]"
+                        else:
+                            speed_note = " [~same speed]"
             
-            print(f"           {j+1}. '{phoneme}' [{phoneme_start:.2f}s → {phoneme_end:.2f}s] → viseme:{viseme_id} ({clip_name}) {status}{trim_note}")
+            print(f"           {j+1}. '{phoneme}' [{phoneme_start:.2f}s → {phoneme_end:.2f}s] → viseme:{viseme_id} ({clip_name}) {status}{speed_note}")
             phoneme_start = phoneme_end
+        
+        # Show extension if present
+        if extension_duration > 0.01:
+            last_phoneme = phonemes[-1] if phonemes else 'SIL'
+            last_viseme_id = get_viseme_from_phoneme(last_phoneme)
+            last_clip_name = VISEME_TO_IPA_CLIP.get(last_viseme_id, 'MISSING')
+            extension_end = word_data['end'] + extension_duration
+            print(f"           📏 EXTENSION: '{last_phoneme}' [{word_data['end']:.2f}s → {extension_end:.2f}s] → viseme:{last_viseme_id} ({last_clip_name}) [extended]")
+        
+        # Show remaining silence if present
+        if remaining_gap > 0.01:
+            silence_start = word_data['extended_end']
+            silence_end = silence_start + remaining_gap
+            print(f"           🔇 SILENCE: [{silence_start:.2f}s → {silence_end:.2f}s] ({remaining_gap:.2f}s)")
+        
         print()
     
     print("="*80)
 
+def calculate_extended_word_timings(word_timings):
+    """Calculate extended word timings by extending last viseme into following gaps."""
+    extended_timings = []
+    
+    for i, word_data in enumerate(word_timings):
+        extended_word = word_data.copy()
+        
+        # Check if there's a next word to calculate gap
+        if i < len(word_timings) - 1:
+            next_word_start = word_timings[i + 1]['start']
+            current_end = word_data['end']
+            gap_duration = next_word_start - current_end
+            
+            # If there's a gap > 10ms, extend this word into part of it
+            if gap_duration > 0.01:
+                # Extend the word to fill up to 75% of the gap (leave some for natural pause)
+                max_extension = gap_duration * 0.75
+                extended_word['extended_end'] = current_end + max_extension
+                extended_word['extension_duration'] = max_extension
+                extended_word['remaining_gap'] = gap_duration - max_extension
+            else:
+                extended_word['extended_end'] = current_end
+                extended_word['extension_duration'] = 0
+                extended_word['remaining_gap'] = 0
+        else:
+            # Last word - no extension needed
+            extended_word['extended_end'] = word_data['end']
+            extended_word['extension_duration'] = 0
+            extended_word['remaining_gap'] = 0
+        
+        extended_timings.append(extended_word)
+    
+    return extended_timings
+
 def build_phoneme_speech_video(word_timings, clips_dir=".", output_path="temp_phoneme_speech.mp4"):
-    """Build the complete speech video from phoneme timing data."""
+    """Build the complete speech video from phoneme timing data using speed adjustment and word extension."""
     
-    print("🎬 Building phoneme-based speech video...")
+    print("🎬 Building phoneme-based speech video with speed adjustment and word extension...")
     
-    # Print timing outline
-    print_phoneme_timing_outline(word_timings)
+    # Calculate extended word timings
+    extended_word_timings = calculate_extended_word_timings(word_timings)
+    
+    # Print timing outline with extensions
+    print_extended_timing_outline(extended_word_timings)
     
     # Check system
     ffmpeg_path = check_ffmpeg()
@@ -421,15 +509,18 @@ def build_phoneme_speech_video(word_timings, clips_dir=".", output_path="temp_ph
     # Create temporary directory for intermediate files
     with tempfile.TemporaryDirectory() as temp_dir:
         segment_files = []
-        previous_end_time = 0.0
+        previous_extended_end = 0.0
         missing_visemes = set()
         
-        for i, word_data in enumerate(word_timings):
+        for i, word_data in enumerate(extended_word_timings):
             current_start = word_data['start']
             current_end = word_data['end']
+            extended_end = word_data['extended_end']
+            extension_duration = word_data['extension_duration']
+            remaining_gap = word_data['remaining_gap']
             
-            # Handle pause before this word
-            pause_duration = current_start - previous_end_time
+            # Handle any remaining pause before this word (should be minimal now)
+            pause_duration = current_start - previous_extended_end
             if pause_duration > 0.01:
                 pause_file = os.path.join(temp_dir, f"pause_{i}.mp4")
                 if create_pause_video(pause_duration, silence_video_path, pause_file, ffmpeg_path):
@@ -442,6 +533,7 @@ def build_phoneme_speech_video(word_timings, clips_dir=".", output_path="temp_ph
             word_videos = []
             word_durations = []
             
+            # Regular phoneme clips
             for phoneme in phonemes:
                 viseme_id = get_viseme_from_phoneme(phoneme)
                 video_path, info = load_viseme_clip(viseme_id, clips_dir)
@@ -453,8 +545,23 @@ def build_phoneme_speech_video(word_timings, clips_dir=".", output_path="temp_ph
                     missing_visemes.add(f"phoneme_{clean_phoneme}_viseme_{viseme_id}_{VISEME_TO_IPA_CLIP.get(viseme_id, 'unknown')}")
                     word_videos.append(silence_video_path)
                 
-                # Use equal duration for each phoneme
+                # Use equal duration for each phoneme within the word
                 word_durations.append(word_data['phoneme_duration'])
+            
+            # Add extension of the last phoneme if there's extension duration
+            if extension_duration > 0.01 and phonemes:
+                # Use the last phoneme's viseme for the extension
+                last_phoneme = phonemes[-1]
+                last_viseme_id = get_viseme_from_phoneme(last_phoneme)
+                last_video_path, last_info = load_viseme_clip(last_viseme_id, clips_dir)
+                
+                if last_video_path and last_info:
+                    word_videos.append(last_video_path)
+                else:
+                    word_videos.append(silence_video_path)
+                
+                word_durations.append(extension_duration)
+                print(f"🔄 Extending last phoneme '{last_phoneme}' of '{word_data['word']}' for {extension_duration:.2f}s")
             
             if word_videos:
                 word_file = os.path.join(temp_dir, f"word_{i}.mp4")
@@ -464,7 +571,13 @@ def build_phoneme_speech_video(word_timings, clips_dir=".", output_path="temp_ph
                 except Exception as e:
                     print(f"❌ Failed to create word video for '{word_data['word']}': {e}")
             
-            previous_end_time = current_end
+            # Add remaining gap as silence if needed
+            if remaining_gap > 0.01:
+                gap_file = os.path.join(temp_dir, f"gap_{i}.mp4")
+                if create_pause_video(remaining_gap, silence_video_path, gap_file, ffmpeg_path):
+                    segment_files.append(gap_file)
+            
+            previous_extended_end = extended_end + remaining_gap
         
         if missing_visemes:
             print(f"⚠️  Missing viseme clips for: {sorted(missing_visemes)}")
@@ -531,7 +644,7 @@ def combine_video_audio(video_path, audio_path, output_path, ffmpeg_path='ffmpeg
 
 def create_phoneme_lipsynced_video(audio_path, clips_dir=".", output_path=None):
     """
-    Main function: Create a complete lip-synced video from an audio file using phoneme-based visemes.
+    Main function: Create a complete lip-synced video from an audio file using phoneme-based visemes with speed adjustment and word extension.
     
     Args:
         audio_path (str): Path to the input audio file
@@ -544,9 +657,9 @@ def create_phoneme_lipsynced_video(audio_path, clips_dir=".", output_path=None):
     
     if output_path is None:
         audio_name = Path(audio_path).stem
-        output_path = f"{audio_name}_phoneme_lipsynced.mp4"
+        output_path = f"{audio_name}_phoneme_lipsynced_extended.mp4"
     
-    print(f"🎬 Creating PHONEME-BASED lip-synced video")
+    print(f"🎬 Creating PHONEME-BASED lip-synced video with SPEED ADJUSTMENT and WORD EXTENSION")
     print(f"📁 Audio: {audio_path}")
     print(f"📁 Viseme clips: {clips_dir}")
     print(f"💾 Output: {output_path}")
@@ -555,8 +668,8 @@ def create_phoneme_lipsynced_video(audio_path, clips_dir=".", output_path=None):
     print("\n🎤 Analyzing audio and extracting phonemes...")
     word_timings = get_word_phoneme_timings(audio_path)
     
-    # Step 2: Build video from phoneme-based viseme clips
-    print("\n🎬 Building phoneme-based video...")
+    # Step 2: Build video from phoneme-based viseme clips with extension
+    print("\n🎬 Building phoneme-based video with word extensions...")
     temp_video = "temp_phoneme_speech_video.mp4"
     speech_video_path = build_phoneme_speech_video(word_timings, clips_dir, temp_video)
     
@@ -574,7 +687,7 @@ def create_phoneme_lipsynced_video(audio_path, clips_dir=".", output_path=None):
     except:
         pass
     
-    print(f"\n🎉 SUCCESS! Phoneme-based lip-synced video created: {final_output}")
+    print(f"\n🎉 SUCCESS! Phoneme-based lip-synced video with speed adjustment and word extension created: {final_output}")
     
     return final_output
 
@@ -614,7 +727,7 @@ def test_phoneme_extraction():
 # Example usage
 if __name__ == "__main__":
     # Test phoneme extraction
-    test_phoneme_extraction()
+    #test_phoneme_extraction()
     
-    # Create phoneme-based lip-synced video
-    create_phoneme_lipsynced_video("hyd.wav", clips_dir="", output_path="hyd_ls_8.mp4")
+    # Create phoneme-based lip-synced video with speed adjustment and word extension
+    create_phoneme_lipsynced_video("ht.wav", clips_dir="", output_path="hyd_ls_extended.mp4")
