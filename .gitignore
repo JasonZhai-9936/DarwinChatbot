@@ -6,6 +6,9 @@ __pycache__/
 # Conda installer
 Miniconda3.exe
 
+#FFMPEG
+tools/ffmpeg
+
 # Environment or config files (customize if needed)
 .env
 *.env
