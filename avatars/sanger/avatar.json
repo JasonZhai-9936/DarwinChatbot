@@ -1,0 +1,11 @@
+{
+  "name": "sanger",
+  "portrait_prompt": "",
+  "personality": "",
+  "metadata": {
+    "created": "2025-06-06T12:08:42.935547",
+    "version": "1.0",
+    "last_modified": "2025-06-06T12:10:54.629307"
+  },
+  "node_file": "node_network.json"
+}

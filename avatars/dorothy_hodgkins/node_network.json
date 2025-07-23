@@ -1,0 +1,35 @@
+{
+  "nodes": {
+    "node_main": {
+      "id": "node_main",
+      "name": "main",
+      "grid_x": 4,
+      "grid_y": 2,
+      "image_path": "c:\\Users\\Jason\\Documents\\DarwinChatbot\\avatars\\dorothy_hodgkins\\node_node_main_turtle.png",
+      "connections": [
+        "node_mansion"
+      ],
+      "prompt": ""
+    },
+    "node_mansion": {
+      "id": "node_mansion",
+      "name": "mansion",
+      "grid_x": 6,
+      "grid_y": 0,
+      "image_path": null,
+      "connections": [
+        "node_main"
+      ],
+      "prompt": ""
+    }
+  },
+  "connections": [
+    [
+      "node_main",
+      "node_mansion"
+    ]
+  ],
+  "grid_size": 9,
+  "avatar_name": "Dorothy Hodgkins",
+  "last_updated": "2025-06-06T12:12:25.815559"
+}

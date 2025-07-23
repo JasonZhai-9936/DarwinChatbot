@@ -80,7 +80,7 @@ def count_ipa_vowels(ipa_string):
     """Count vowels in IPA string."""
     return sum(1 for char in ipa_string if char in IPA_VOWELS)
 
-def get_word_ipa_timings(audio_path, model_size="large-v3", device="cpu", compute_type="int8"):
+def get_word_ipa_timings(audio_path, model_size="tiny", device="cpu", compute_type="int8"):
     """Get word-level IPA timings from audio file."""
     model = WhisperModel(model_size, device=device, compute_type=compute_type)
     segments, info = model.transcribe(audio_path, beam_size=5, word_timestamps=True)
@@ -628,4 +628,4 @@ def create_lipsynced_video(audio_path, clips_dir=".", output_path=None):
 
 # Example usage
 if __name__ == "__main__":
-    create_lipsynced_video("hay.wav", clips_dir="", output_path="hay_lp_1.mp4")
+    create_lipsynced_video("hay.wav", clips_dir="", output_path="hay_lp_12.mp4")

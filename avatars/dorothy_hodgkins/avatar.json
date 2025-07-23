@@ -1,0 +1,11 @@
+{
+  "name": "Dorothy Hodgkins",
+  "portrait_prompt": "",
+  "personality": "",
+  "metadata": {
+    "created": "2025-06-06T11:53:35.087839",
+    "version": "1.0",
+    "last_modified": "2025-06-06T12:12:25.840733"
+  },
+  "node_file": "node_network.json"
+}

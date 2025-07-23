@@ -1,30 +1,47 @@
-# node_manager.py - Updated Node Manager with Avatar Integration
+# node_manager3.py - Updated Node Manager with Grid System
 import os
 import json
 from pathlib import Path
 from nicegui import ui
 from typing import Dict, List, Tuple, Optional, Callable
+from datetime import datetime
 import random
 
 class Node:
     """Represents a single node in the node network"""
     
-    def __init__(self, node_id: str, name: str, x: float, y: float, image_path: str = None):
+    def __init__(self, node_id: str, name: str, grid_x: int, grid_y: int, image_path: str = None):
         self.id = node_id
         self.name = name
-        self.x = x
-        self.y = y
+        self.grid_x = grid_x  # Grid position (0-8)
+        self.grid_y = grid_y  # Grid position (0-8)
         self.image_path = image_path
         self.connections: List[str] = []  # List of connected node IDs
         self.prompt = ""  # Add prompt field for avatar integration
+    
+    def get_pixel_position(self, canvas_width: int, canvas_height: int, grid_size: int):
+        """Convert grid position to pixel position (centered on grid point)"""
+        grid_spacing_x = (canvas_width - 100) / (grid_size - 1)  # Leave 50px margin on each side
+        grid_spacing_y = (canvas_height - 100) / (grid_size - 1)
+        
+        # Calculate center of grid point
+        grid_center_x = 50 + (self.grid_x * grid_spacing_x)
+        grid_center_y = 50 + (self.grid_y * grid_spacing_y)
+        
+        # Offset by half node size to center the node on the grid point
+        node_size = 60  # Should match node_manager.node_size
+        pixel_x = grid_center_x - (node_size / 2)
+        pixel_y = grid_center_y - (node_size / 2)
+        
+        return pixel_x, pixel_y
     
     def to_dict(self):
         """Convert node to dictionary for serialization"""
         return {
             'id': self.id,
             'name': self.name,
-            'x': self.x,
-            'y': self.y,
+            'grid_x': self.grid_x,
+            'grid_y': self.grid_y,
             'image_path': self.image_path,
             'connections': self.connections,
             'prompt': self.prompt
@@ -33,27 +50,50 @@ class Node:
     @classmethod
     def from_dict(cls, data):
         """Create node from dictionary"""
-        node = cls(data['id'], data['name'], data['x'], data['y'], data.get('image_path'))
+        # Handle legacy x,y coordinates by converting to grid positions
+        if 'grid_x' in data and 'grid_y' in data:
+            grid_x, grid_y = data['grid_x'], data['grid_y']
+        else:
+            # Convert legacy pixel coordinates to grid positions (rough approximation)
+            x, y = data.get('x', 100), data.get('y', 100)
+            grid_x = min(8, max(0, int((x - 50) / 100)))  # Rough conversion
+            grid_y = min(8, max(0, int((y - 50) / 75)))   # Rough conversion
+        
+        node = cls(data['id'], data['name'], grid_x, grid_y, data.get('image_path'))
         node.connections = data.get('connections', [])
         node.prompt = data.get('prompt', '')
         return node
 
 class NodeManager:
-    """Manages the node network and provides visualization with avatar integration"""
+    """Manages the node network with grid-based positioning"""
     
     def __init__(self, output_dir: str, auto_save_callback: Callable = None):
-        self.output_dir = output_dir
+        self.output_dir = output_dir  # This will be set to avatar-specific directory
         self.nodes: Dict[str, Node] = {}
         self.connections: List[Tuple[str, str]] = []
         self.canvas_width = 1000
         self.canvas_height = 600
-        self.node_size = 80
+        self.grid_size = 9  # 9x9 grid
+        self.node_size = 60  # Smaller nodes for grid
         self.selected_node_id = None
         self.connecting_mode = False
         self.connection_start_id = None
-        self.auto_save_callback = auto_save_callback  # Callback to sync with avatar manager
+        self.auto_save_callback = auto_save_callback
+        self.current_avatar_name = "Default"  # Track current avatar name
+        
+        # Create grid occupancy matrix
+        self.grid_occupied = [[False for _ in range(self.grid_size)] for _ in range(self.grid_size)]
         
         # Load existing nodes if they exist
+        self.load_nodes()
+    
+    def set_avatar_context(self, avatar_name: str, avatar_dir: str):
+        """Set the current avatar context and update output directory"""
+        self.current_avatar_name = avatar_name
+        self.output_dir = avatar_dir
+        print(f"[NODE MANAGER] Set avatar context: '{avatar_name}' -> {avatar_dir}")
+        
+        # Reload nodes for this avatar
         self.load_nodes()
     
     def set_auto_save_callback(self, callback: Callable):
@@ -68,12 +108,81 @@ class NodeManager:
             except Exception as e:
                 print(f"[NODE MANAGER] Error in auto-save callback: {e}")
     
+    def _update_grid_occupancy(self):
+        """Update the grid occupancy matrix"""
+        # Reset grid
+        self.grid_occupied = [[False for _ in range(self.grid_size)] for _ in range(self.grid_size)]
+        
+        # Mark occupied positions
+        for node in self.nodes.values():
+            if 0 <= node.grid_x < self.grid_size and 0 <= node.grid_y < self.grid_size:
+                self.grid_occupied[node.grid_y][node.grid_x] = True
+    
+    def find_empty_grid_position(self) -> Tuple[int, int]:
+        """Find an empty grid position"""
+        self._update_grid_occupancy()
+        
+        for y in range(self.grid_size):
+            for x in range(self.grid_size):
+                if not self.grid_occupied[y][x]:
+                    return x, y
+        
+        # If all positions are taken, return center position and let it overlap
+        return self.grid_size // 2, self.grid_size // 2
+    
+    def get_available_positions_for_node(self, node_id: str) -> List[Tuple[int, int]]:
+        """Get list of available grid positions for a specific node"""
+        self._update_grid_occupancy()
+        available = []
+        
+        # Current node position is always available
+        if node_id in self.nodes:
+            current_node = self.nodes[node_id]
+            available.append((current_node.grid_x, current_node.grid_y))
+        
+        # Find other empty positions
+        for y in range(self.grid_size):
+            for x in range(self.grid_size):
+                if not self.grid_occupied[y][x]:
+                    available.append((x, y))
+        
+        return available
+    
+    def move_node_to_grid(self, node_id: str, grid_x: int, grid_y: int) -> bool:
+        """Move a node to a specific grid position"""
+        if node_id not in self.nodes:
+            return False
+        
+        if not (0 <= grid_x < self.grid_size and 0 <= grid_y < self.grid_size):
+            return False
+        
+        # Check if position is available (excluding current node)
+        self._update_grid_occupancy()
+        current_node = self.nodes[node_id]
+        
+        # If moving to same position, allow it
+        if grid_x == current_node.grid_x and grid_y == current_node.grid_y:
+            return True
+        
+        # Check if target position is free
+        if self.grid_occupied[grid_y][grid_x]:
+            return False  # Position occupied
+        
+        # Move the node
+        current_node.grid_x = grid_x
+        current_node.grid_y = grid_y
+        self.save_nodes()
+        return True
+    
     def save_nodes(self):
-        """Save nodes to JSON file"""
+        """Save nodes to JSON file in avatar directory"""
         save_path = os.path.join(self.output_dir, 'node_network.json')
         data = {
             'nodes': {node_id: node.to_dict() for node_id, node in self.nodes.items()},
-            'connections': self.connections
+            'connections': self.connections,
+            'grid_size': self.grid_size,
+            'avatar_name': self.current_avatar_name,  # Add reference to avatar
+            'last_updated': datetime.now().isoformat()  # Add timestamp
         }
         
         os.makedirs(self.output_dir, exist_ok=True)
@@ -81,7 +190,7 @@ class NodeManager:
             json.dump(data, f, indent=2)
         print(f"[NODE MANAGER] Saved {len(self.nodes)} nodes to {save_path}")
         
-        # Trigger auto-save to avatar manager
+        # Trigger auto-save to avatar manager (this will NOT include node data)
         self._trigger_auto_save()
     
     def load_nodes(self):
@@ -91,6 +200,9 @@ class NodeManager:
             try:
                 with open(save_path, 'r') as f:
                     data = json.load(f)
+                
+                # Load grid size if saved
+                self.grid_size = data.get('grid_size', 9)
                 
                 # Load nodes
                 self.nodes.clear()
@@ -129,10 +241,11 @@ class NodeManager:
         except Exception as e:
             print(f"[NODE MANAGER] Error loading from avatar data: {e}")
     
-    def create_node(self, name: str, x: float, y: float) -> str:
-        """Create a new node and return its ID"""
+    def create_node(self, name: str) -> str:
+        """Create a new node at an available grid position"""
         node_id = f"node_{len(self.nodes) + 1}"
-        self.nodes[node_id] = Node(node_id, name, x, y)
+        grid_x, grid_y = self.find_empty_grid_position()
+        self.nodes[node_id] = Node(node_id, name, grid_x, grid_y)
         self.save_nodes()
         return node_id
     
@@ -149,13 +262,6 @@ class NodeManager:
             
             # Delete the node
             del self.nodes[node_id]
-            self.save_nodes()
-    
-    def move_node(self, node_id: str, x: float, y: float):
-        """Move a node to new coordinates"""
-        if node_id in self.nodes:
-            self.nodes[node_id].x = x
-            self.nodes[node_id].y = y
             self.save_nodes()
     
     def connect_nodes(self, node1_id: str, node2_id: str):
@@ -213,7 +319,7 @@ class NodeManager:
             self.save_nodes()
 
 def create_node_manager_ui(node_manager: NodeManager):
-    """Create the Node Manager UI with avatar integration features"""
+    """Create the Node Manager UI with grid-based positioning"""
     
     # Global UI state
     canvas_container = None
@@ -228,14 +334,50 @@ def create_node_manager_ui(node_manager: NodeManager):
                 draw_canvas()
     
     def draw_canvas():
-        """Draw the node canvas with HTML/CSS"""
+        """Draw the node canvas with grid and clickable nodes"""
         
         # Create canvas with relative positioning
         with ui.element('div').classes('relative border-2 border-gray-300 bg-white rounded-lg').style(
             f'width: {node_manager.canvas_width}px; height: {node_manager.canvas_height}px; '
-            'background-image: radial-gradient(circle at 1px 1px, rgba(0,0,0,.15) 1px, transparent 0); '
+            'background-image: radial-gradient(circle at 1px 1px, rgba(0,0,0,.05) 1px, transparent 0); '
             'background-size: 20px 20px; overflow: hidden;'
-        ):
+        ) as canvas:
+            
+            # Draw grid points as clickable zones
+            grid_spacing_x = (node_manager.canvas_width - 100) / (node_manager.grid_size - 1)
+            grid_spacing_y = (node_manager.canvas_height - 100) / (node_manager.grid_size - 1)
+            
+            for y in range(node_manager.grid_size):
+                for x in range(node_manager.grid_size):
+                    pixel_x = 50 + (x * grid_spacing_x)
+                    pixel_y = 50 + (y * grid_spacing_y)
+                    
+                    # Check if this grid position is occupied
+                    is_occupied = any(
+                        node.grid_x == x and node.grid_y == y 
+                        for node in node_manager.nodes.values()
+                    )
+                    
+                    # Create clickable grid point
+                    if is_occupied:
+                        # Red point for occupied positions
+                        ui.element('div').classes(
+                            'absolute w-6 h-6 rounded-full bg-red-400 border-2 border-red-600'
+                        ).style(
+                            f'left: {pixel_x - 12}px; top: {pixel_y - 12}px; z-index: 1;'
+                        )
+                    else:
+                        # Interactive gray point for available positions
+                        grid_point = ui.element('div').classes(
+                            'absolute w-6 h-6 rounded-full bg-gray-300 border-2 border-gray-500 '
+                            'hover:bg-blue-300 hover:border-blue-600 hover:scale-125 '
+                            'transition-all duration-200 cursor-pointer'
+                        ).style(
+                            f'left: {pixel_x - 12}px; top: {pixel_y - 12}px; z-index: 1;'
+                        )
+                        
+                        # Add click handler for moving selected node
+                        grid_point.on('click', lambda grid_x=x, grid_y=y: handle_grid_click(grid_x, grid_y))
             
             # Draw connections as lines
             for connection in node_manager.connections:
@@ -244,77 +386,97 @@ def create_node_manager_ui(node_manager: NodeManager):
                     node1 = node_manager.nodes[node1_id]
                     node2 = node_manager.nodes[node2_id]
                     
-                    x1 = node1.x + node_manager.node_size/2
-                    y1 = node1.y + node_manager.node_size/2
-                    x2 = node2.x + node_manager.node_size/2
-                    y2 = node2.y + node_manager.node_size/2
+                    # Get grid center positions for both nodes
+                    grid_spacing_x = (node_manager.canvas_width - 100) / (node_manager.grid_size - 1)
+                    grid_spacing_y = (node_manager.canvas_height - 100) / (node_manager.grid_size - 1)
+                    
+                    x1 = 50 + (node1.grid_x * grid_spacing_x)
+                    y1 = 50 + (node1.grid_y * grid_spacing_y)
+                    x2 = 50 + (node2.grid_x * grid_spacing_x)
+                    y2 = 50 + (node2.grid_y * grid_spacing_y)
                     
                     # Calculate line angle and length
                     import math
                     angle = math.atan2(y2 - y1, x2 - x1)
                     length = math.sqrt((x2 - x1)**2 + (y2 - y1)**2)
                     
-                    # Draw connection line
+                    # Draw connection line from center to center
                     ui.element('div').classes('absolute bg-blue-500').style(
                         f'left: {x1}px; top: {y1}px; '
                         f'width: {length}px; height: 3px; '
                         f'transform: rotate({angle}rad); '
                         f'transform-origin: 0 50%; '
-                        f'z-index: 1;'
+                        f'z-index: 2;'
                     )
             
-            # Draw nodes
+            # Draw clickable nodes
             for node_id, node in node_manager.nodes.items():
                 is_selected = node_id == node_manager.selected_node_id
                 
-                # Node container
-                with ui.element('div').classes('absolute').style(
-                    f'left: {node.x}px; top: {node.y}px; '
+                pixel_x, pixel_y = node.get_pixel_position(node_manager.canvas_width, node_manager.canvas_height, node_manager.grid_size)
+                
+                # Node container with click functionality
+                with ui.element('div').classes('absolute cursor-pointer').style(
+                    f'left: {pixel_x}px; top: {pixel_y}px; '
                     f'width: {node_manager.node_size}px; height: {node_manager.node_size}px; '
                     f'z-index: 10;'
-                ):
+                ).on('click', lambda n_id=node_id: handle_node_click(n_id)) as node_container:
+                    
                     # Check if node has an image
                     has_image = node.image_path and os.path.exists(node.image_path)
                     
                     if has_image:
-                        # Node with image - create clickable image container
-                        border_color = 'border-red-500' if is_selected else 'border-blue-600'
+                        # Node with image
+                        border_color = 'border-yellow-400' if is_selected else 'border-blue-600'
                         border_width = 'border-4' if is_selected else 'border-2'
                         
                         with ui.element('div').classes(
                             f'w-full h-full rounded-full overflow-hidden {border_color} {border_width} '
-                            'hover:scale-110 transition-transform duration-200 cursor-pointer relative'
-                        ).on('click', lambda n_id=node_id: handle_node_click(n_id)):
+                            'hover:scale-110 transition-transform duration-200 relative shadow-lg'
+                        ):
                             
                             # Display the actual image
                             ui.image(node.image_path).classes(
-                                'w-full h-full object-cover'
+                                'w-full h-full object-cover pointer-events-none'
                             ).style('border-radius: inherit;')
                             
-                            # Selection overlay
+                            # Selection overlay - yellow glow for selected
                             if is_selected:
                                 ui.element('div').classes(
-                                    'absolute inset-0 bg-orange-400 bg-opacity-30 rounded-full'
+                                    'absolute inset-0 bg-yellow-400 bg-opacity-30 rounded-full pointer-events-none'
                                 )
                     
                     else:
                         # Node without image - show colored circle with icon
-                        node_color = 'bg-orange-400 border-red-500' if is_selected else 'bg-blue-400 border-blue-600'
+                        node_color = 'bg-yellow-400 border-yellow-500' if is_selected else 'bg-blue-400 border-blue-600'
                         border_width = 'border-4' if is_selected else 'border-2'
                         
-                        node_btn = ui.button('', icon='person').classes(
+                        # Create clickable container for nodes without images
+                        with ui.element('div').classes(
                             f'w-full h-full rounded-full {node_color} {border_width} '
-                            'hover:scale-110 transition-transform duration-200 text-white'
-                        ).style('min-width: 0; padding: 0;')
-                        
-                        # Add click handler
-                        node_btn.on('click', lambda n_id=node_id: handle_node_click(n_id))
+                            'hover:scale-110 transition-transform duration-200 shadow-lg '
+                            'flex items-center justify-center cursor-pointer'
+                        ):
+                            # Icon inside the clickable container
+                            ui.icon('person', size='2rem').classes('text-white pointer-events-none')
                     
                     # Node label
                     ui.label(node.name).classes(
                         'absolute -bottom-6 left-1/2 transform -translate-x-1/2 '
-                        'text-xs font-semibold text-gray-700 whitespace-nowrap bg-white px-1 rounded'
+                        'text-xs font-semibold text-gray-700 whitespace-nowrap bg-white px-1 rounded pointer-events-none'
                     )
+    
+    def handle_grid_click(grid_x: int, grid_y: int):
+        """Handle clicking on grid points to move selected node"""
+        if node_manager.selected_node_id:
+            if node_manager.move_node_to_grid(node_manager.selected_node_id, grid_x, grid_y):
+                refresh_canvas()
+                update_node_info()
+                ui.notify(f"Node moved to ({grid_x}, {grid_y})")
+            else:
+                ui.notify("Cannot move to that position - already occupied", type='warning')
+        else:
+            ui.notify("Select a node first, then click on a grid point to move it", type='info')
     
     def handle_node_click(node_id: str):
         """Handle node click events"""
@@ -344,7 +506,7 @@ def create_node_manager_ui(node_manager: NodeManager):
         update_node_info()
     
     def update_node_info():
-        """Update the node information panel with avatar integration"""
+        """Update the node information panel with drag and drop info"""
         if node_info_container and node_manager.selected_node_id:
             node_info_container.clear()
             node = node_manager.nodes[node_manager.selected_node_id]
@@ -357,7 +519,7 @@ def create_node_manager_ui(node_manager: NodeManager):
                 ui.button('Update Name', icon='edit').on('click', 
                     lambda: update_node_name(name_input.value)).classes('w-full mb-3 bg-blue-600 text-white')
                 
-                # Node prompt input (new for avatar integration)
+                # Node prompt input
                 prompt_input = ui.textarea(
                     'Node Prompt/Description', 
                     value=node.prompt,
@@ -366,8 +528,15 @@ def create_node_manager_ui(node_manager: NodeManager):
                 ui.button('Update Prompt', icon='edit').on('click', 
                     lambda: update_node_prompt(prompt_input.value)).classes('w-full mb-3 bg-green-600 text-white')
                 
-                # Position info
-                ui.label(f'Position: ({int(node.x)}, {int(node.y)})').classes('text-sm text-gray-600 mb-2')
+                # Grid position info
+                ui.separator().classes('mb-3')
+                ui.label('Grid Position').classes('font-semibold mb-2')
+                ui.label(f'Current: ({node.grid_x}, {node.grid_y})').classes('text-sm text-gray-600 mb-2')
+                
+                # Click-to-move instructions
+                with ui.card().classes('w-full p-3 mb-3 bg-blue-50'):
+                    ui.label('💡 Move Node:').classes('font-semibold text-sm mb-1')
+                    ui.label('Click any gray grid point to move this node there!').classes('text-xs text-gray-700')
                 
                 # Image section
                 ui.separator().classes('mb-3')
@@ -380,7 +549,7 @@ def create_node_manager_ui(node_manager: NodeManager):
                 else:
                     ui.label('No image assigned').classes('text-sm text-gray-500 mb-2')
                 
-                # File browser (simplified)
+                # File browser
                 ui.upload(
                     label='Upload Image',
                     on_upload=lambda e: handle_image_upload(e, node_manager.selected_node_id),
@@ -404,16 +573,21 @@ def create_node_manager_ui(node_manager: NodeManager):
                 
                 # Actions
                 ui.separator().classes('mb-3')
-                with ui.row().classes('w-full gap-2'):
-                    ui.button('Move Random', icon='shuffle', color='orange').on('click', move_node_random).classes('flex-1')
-                    ui.button('Delete Node', icon='delete', color='red').on('click', delete_selected_node).classes('flex-1')
+                ui.button('Delete Node', icon='delete', color='red').on('click', delete_selected_node).classes('w-full')
         else:
             # Show default message
             if node_info_container:
                 node_info_container.clear()
                 with node_info_container:
                     ui.label('Node Properties').classes('text-lg font-semibold mb-3')
-                    ui.label('Click on a node to view and edit its properties').classes('text-sm text-gray-500 text-center')
+                    ui.label('Click on a node to view and edit its properties').classes('text-sm text-gray-500 text-center mb-3')
+                    
+                    # General click-to-move instructions
+                    with ui.card().classes('w-full p-3 bg-green-50'):
+                        ui.label('🎯 Click to Move:').classes('font-semibold text-sm mb-1')
+                        ui.label('• Select a node (click on it)').classes('text-xs text-gray-700 mb-1')
+                        ui.label('• Click on gray grid points to move').classes('text-xs text-gray-700 mb-1')
+                        ui.label('• Red points = occupied positions').classes('text-xs text-gray-700')
     
     def update_node_name(new_name: str):
         """Update the selected node's name"""
@@ -428,16 +602,6 @@ def create_node_manager_ui(node_manager: NodeManager):
         if node_manager.selected_node_id:
             node_manager.update_node_prompt(node_manager.selected_node_id, new_prompt)
             ui.notify("Node prompt updated")
-    
-    def move_node_random():
-        """Move selected node to random position"""
-        if node_manager.selected_node_id:
-            x = random.randint(50, node_manager.canvas_width - node_manager.node_size - 50)
-            y = random.randint(50, node_manager.canvas_height - node_manager.node_size - 50)
-            node_manager.move_node(node_manager.selected_node_id, x, y)
-            refresh_canvas()
-            update_node_info()
-            ui.notify("Node moved to random position")
     
     def disconnect_and_refresh(node1_id: str, node2_id: str):
         """Disconnect nodes and refresh display"""
@@ -479,10 +643,8 @@ def create_node_manager_ui(node_manager: NodeManager):
                 print(f"[NODE MANAGER] Error uploading image: {e}")
     
     def create_new_node():
-        """Create a new node at a random position"""
-        x = random.randint(50, node_manager.canvas_width - node_manager.node_size - 50)
-        y = random.randint(50, node_manager.canvas_height - node_manager.node_size - 50)
-        node_id = node_manager.create_node(f"Node {len(node_manager.nodes) + 1}", x, y)
+        """Create a new node at an available grid position"""
+        node_id = node_manager.create_node(f"Node {len(node_manager.nodes) + 1}")
         refresh_canvas()
         ui.notify(f"Created new node: {node_manager.nodes[node_id].name}")
     
@@ -538,17 +700,25 @@ def create_node_manager_ui(node_manager: NodeManager):
         
         # Header with avatar integration info
         with ui.row().classes('w-full justify-between items-center mb-4'):
-            ui.label('Node Manager').classes('text-3xl font-bold')
+            ui.label('Node Manager (Grid System)').classes('text-3xl font-bold')
             
             # Avatar integration buttons
             with ui.row().classes('gap-2'):
                 ui.button('Import from Avatar', icon='download', color='blue').on('click', import_nodes_from_avatar)
                 ui.button('Export to Avatar', icon='upload', color='green').on('click', export_nodes_to_avatar)
         
-        # Stats row
+        # Grid info and stats row
         with ui.row().classes('w-full gap-4 mb-4 justify-center'):
+            ui.label(f'Grid: {node_manager.grid_size}×{node_manager.grid_size}').classes('text-lg font-semibold bg-purple-100 px-3 py-1 rounded')
             ui.label(f'Nodes: {len(node_manager.nodes)}').classes('text-lg font-semibold bg-blue-100 px-3 py-1 rounded')
             ui.label(f'Connections: {len(node_manager.connections)}').classes('text-lg font-semibold bg-green-100 px-3 py-1 rounded')
+            
+            # Available positions
+            node_manager._update_grid_occupancy()
+            total_positions = node_manager.grid_size * node_manager.grid_size
+            occupied_positions = sum(sum(row) for row in node_manager.grid_occupied)
+            available_positions = total_positions - occupied_positions
+            ui.label(f'Available: {available_positions}').classes('text-lg font-semibold bg-orange-100 px-3 py-1 rounded')
         
         # Controls Row
         with ui.row().classes('w-full gap-4 mb-4'):
@@ -560,13 +730,20 @@ def create_node_manager_ui(node_manager: NodeManager):
         # Connection mode status
         connection_status_label = ui.label('Connection Mode: OFF').classes('text-sm font-semibold text-center mb-4')
         
+        # Instructions
+        with ui.card().classes('w-full p-3 mb-4 bg-blue-50'):
+            ui.label('Click-to-Move Grid System:').classes('font-semibold mb-1')
+            ui.label('• Click a node to select it (yellow outline)').classes('text-sm mb-1')
+            ui.label('• Click any gray grid point to move the selected node there').classes('text-sm mb-1') 
+            ui.label('• Red points = occupied positions, Gray points = available positions').classes('text-sm mb-1')
+            ui.label('• Use Connection Mode to link nodes together').classes('text-sm')
+        
         # Main content area
         with ui.row().classes('w-full gap-6'):
             
             # Canvas area
             with ui.card().classes('flex-1'):
-                ui.label('Node Canvas').classes('text-lg font-semibold mb-3')
-                ui.label('Click empty space to create nodes, click nodes to select them').classes('text-sm text-gray-600 mb-3')
+                ui.label('Node Canvas (Grid-Based)').classes('text-lg font-semibold mb-3')
                 
                 # Canvas container
                 canvas_container = ui.column().classes('w-full')
@@ -582,7 +759,7 @@ def create_node_manager_ui(node_manager: NodeManager):
     
     # Create some sample nodes if none exist
     if len(node_manager.nodes) == 0:
-        node_manager.create_node("Main", 200, 150)
-        node_manager.create_node("Secondary", 400, 300)
-        node_manager.create_node("Output", 600, 200)
+        node_manager.create_node("Main")
+        node_manager.create_node("Secondary") 
+        node_manager.create_node("Output")
         refresh_canvas()

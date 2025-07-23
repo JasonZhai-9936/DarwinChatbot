@@ -1,0 +1,216 @@
+{
+  "nodes": {
+    "main": {
+      "type": "base_node",
+      "description": "Darwin sitting at his desk",
+      "loops": ["main2main", "mainSnuff"],
+      "transitions": {
+        "pipe": "main2pipe",
+        "newspaper": "main2newspaper", 
+        "phone": "main2phone",
+        "standingMansion": "main2standingMansion",
+        "standingBeach": "main2standingBeach"
+      },
+      "talking_node": "main",
+      "talking_animation": "main2main",
+      "can_talk": true
+    },
+    "pipe": {
+      "type": "activity_node",
+      "description": "Darwin smoking his pipe",
+      "parent_node": "main",
+      "loops": ["pipe2pipe"],
+      "transitions": {
+        "main": "pipe2main"
+      },
+      "talking_node": "main",
+      "talking_animation": "main2main",
+      "can_talk": false
+    },
+    "newspaper": {
+      "type": "activity_node", 
+      "description": "Darwin reading newspaper",
+      "parent_node": "main",
+      "loops": ["newspaper2newspaper"],
+      "transitions": {
+        "main": "newspaper2main"
+      },
+      "talking_node": "main",
+      "talking_animation": "main2main",
+      "can_talk": false
+    },
+    "phone": {
+      "type": "activity_node",
+      "description": "Darwin using phone", 
+      "parent_node": "main",
+      "loops": ["phone2phone"],
+      "transitions": {
+        "main": "phone2main"
+      },
+      "talking_node": "main", 
+      "talking_animation": "main2main",
+      "can_talk": false
+    },
+    "standingMansion": {
+      "type": "base_node",
+      "description": "Darwin standing in mansion",
+      "loops": ["standingMansion2standingMansion"],
+      "transitions": {
+        "main": "standingMansion2main",
+        "standingBeach": "standingMansion2standingBeach",
+        "standingMansionSmoke": "standingMansion2standingMansionSmoke"
+      },
+      "talking_node": "standingMansion",
+      "talking_animation": "standingMansion2standingMansion", 
+      "can_talk": true
+    },
+    "standingMansionSmoke": {
+      "type": "activity_node",
+      "description": "Darwin smoking while standing in mansion",
+      "parent_node": "standingMansion", 
+      "loops": ["standingMansionSmoke2standingMansionSmoke"],
+      "transitions": {
+        "standingMansion": "standingMansionSmoke2standingMansion"
+      },
+      "talking_node": "standingMansion",
+      "talking_animation": "standingMansion2standingMansion",
+      "can_talk": false
+    },
+    "standingBeach": {
+      "type": "base_node",
+      "description": "Darwin standing on beach",
+      "loops": ["standingBeach2standingBeach"],
+      "transitions": {
+        "main": "standingBeach2main",
+        "standingMansion": "standingBeach2standingMansion", 
+        "standingBeachSmoke": "standingBeach2standingBeachSmoke"
+      },
+      "talking_node": "standingBeach",
+      "talking_animation": "standingBeach2standingBeach",
+      "can_talk": true
+    },
+    "standingBeachSmoke": {
+      "type": "activity_node",
+      "description": "Darwin smoking while standing on beach",
+      "parent_node": "standingBeach",
+      "loops": ["standingBeachSmoke2standingBeachSmoke"], 
+      "transitions": {
+        "standingBeach": "standingBeachSmoke2standingBeach"
+      },
+      "talking_node": "standingBeach",
+      "talking_animation": "standingBeach2standingBeach",
+      "can_talk": false
+    }
+  },
+  
+  "transition_probabilities": {
+    "main": {
+      "main2main": 0.1,
+      "mainSnuff": 0.1,
+      "pipe": 0.2,
+      "newspaper": 0.2,
+      "phone": 0.1,
+      "standingMansion": 0.5,
+      "standingBeach": 0.2
+    },
+    "pipe": {
+      "pipe2pipe": 0.1,
+      "main": 0.6
+    },
+    "newspaper": {
+      "newspaper2newspaper": 0.1,
+      "main": 0.5
+    },
+    "phone": {
+      "phone2phone": 0.1,
+      "main": 0.5
+    },
+    "standingMansion": {
+      "standingMansion2standingMansion": 0.5,
+      "standingMansionSmoke": 0.0,
+      "standingBeach": 0.5,
+      "main": 0.2
+    },
+    "standingMansionSmoke": {
+      "standingMansionSmoke2standingMansionSmoke": 0.7, 
+      "standingMansion": 0.3
+    },
+    "standingBeach": {
+      "standingBeach2standingBeach": 0.3,
+      "standingBeachSmoke": 0.0,
+      "standingMansion": 0.5,
+      "main": 0.0
+    },
+    "standingBeachSmoke": {
+      "standingBeachSmoke2standingBeachSmoke": 0.7,
+      "standingBeach": 0.3
+    }
+  },
+
+  "talking_nodes": {
+    "main": {
+      "lipsync_folder": "main2main",
+      "description": "Darwin talking at his desk",
+      "transition_paths": {
+        "pipe": ["pipe2main"],
+        "newspaper": ["newspaper2main"], 
+        "phone": ["phone2main"],
+        "standingMansion": ["standingMansion2main"],
+        "standingBeach": ["standingBeach2main"],
+        "standingMansionSmoke": ["standingMansionSmoke2standingMansion", "standingMansion2main"],
+        "standingBeachSmoke": ["standingBeachSmoke2standingBeach", "standingBeach2main"]
+      }
+    },
+    "standingMansion": {
+      "lipsync_folder": "standingMansion2standingMansion",
+      "description": "Darwin talking while standing in mansion",
+      "transition_paths": {
+        "main": ["main2standingMansion"],
+        "pipe": ["pipe2main", "main2standingMansion"],
+        "newspaper": ["newspaper2main", "main2standingMansion"],
+        "phone": ["phone2main", "main2standingMansion"],
+        "standingBeach": ["standingBeach2standingMansion"],
+        "standingMansionSmoke": ["standingMansionSmoke2standingMansion"],
+        "standingBeachSmoke": ["standingBeachSmoke2standingBeach", "standingBeach2standingMansion"]
+      }
+    },
+    "standingBeach": {
+      "lipsync_folder": "standingBeach2standingBeach", 
+      "description": "Darwin talking while standing on beach",
+      "transition_paths": {
+        "main": ["main2standingMansion", "standingMansion2standingBeach"],
+        "pipe": ["pipe2main", "main2standingMansion", "standingMansion2standingBeach"],
+        "newspaper": ["newspaper2main", "main2standingMansion", "standingMansion2standingBeach"],
+        "phone": ["phone2main", "main2standingMansion", "standingMansion2standingBeach"],
+        "standingMansion": ["standingMansion2standingBeach"],
+        "standingMansionSmoke": ["standingMansionSmoke2standingMansion", "standingMansion2standingBeach"],
+        "standingBeachSmoke": ["standingBeachSmoke2standingBeach"]
+      }
+    }
+  },
+
+  "node_hierarchy": {
+    "main_family": {
+      "base": "main",
+      "children": ["pipe", "newspaper", "phone"],
+      "talking_node": "main"
+    },
+    "mansion_family": {
+      "base": "standingMansion", 
+      "children": ["standingMansionSmoke"],
+      "talking_node": "standingMansion"
+    },
+    "beach_family": {
+      "base": "standingBeach",
+      "children": ["standingBeachSmoke"], 
+      "talking_node": "standingBeach"
+    }
+  },
+
+  "settings": {
+    "supported_extensions": [".mp4", ".gif"],
+    "default_playlist_length": 10,
+    "default_start_node": "main",
+    "lipsync_base_path": "lipsync_responses"
+  }
+}

@@ -1,0 +1,6 @@
+import pyphen
+
+dic = pyphen.Pyphen(lang='en_GB')
+
+
+print(dic.inserted('good morning. How are you'))

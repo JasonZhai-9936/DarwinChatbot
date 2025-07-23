@@ -1,0 +1,18 @@
+{
+    "input_image": "input.jpg",
+    "output_video": "output.mp4",
+    "duration_seconds": 10,
+    "fps": 30,
+    "video_codec": "mp4v",
+    "quality": "high",
+    "resolution": {
+        "width": 1920,
+        "height": 1080
+    },
+    "maintain_aspect_ratio": true,
+    "background_color": [
+        0,
+        0,
+        0
+    ]
+}

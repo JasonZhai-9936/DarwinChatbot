@@ -1,0 +1,17 @@
+{
+  "nodes": {
+    "node_main": {
+      "id": "node_main",
+      "name": "main",
+      "grid_x": 5,
+      "grid_y": 0,
+      "image_path": null,
+      "connections": [],
+      "prompt": ""
+    }
+  },
+  "connections": [],
+  "grid_size": 9,
+  "avatar_name": "sanger",
+  "last_updated": "2025-06-06T12:10:54.600062"
+}
