@@ -1,1 +1,0 @@
-All the helper python code here is designed to be run from /scripts. Move back if you want to run
